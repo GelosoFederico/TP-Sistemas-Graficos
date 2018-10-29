@@ -77,16 +77,16 @@
                 this.timeJump = 0.05;
                 this.time = 0;
 
-                this.baseCakeR = 2.5;
-                this.baseCakeH = 2.0;
+                this.baseCakeR = 1.5;
+                this.baseCakeH = 1.5;
                 this.baseCakeCycles = 3;
                 this.baseCakeAmplitude = 0.3;
 
-                this.creamR = 2.0;
-                this.creamTurns = 2;
-                this.creamStarR = 1;
+                this.creamR = 1.25;
+                this.creamTurns = 1;
+                this.creamStarR = 0.1;
 
-                this.diskR = 4;
+                this.diskR = 2;
                 this.diskH = 0.5;
 
                 this.cakeNumDeco0 = 1;
@@ -99,7 +99,10 @@
                 this.cakeDecoType1 = 'cherry';
                 this.cakeContType1 = 'boxy';
 
-                this.cameraType = 1;
+                this.cakeSmoothnessC = 40;
+                this.cakeSmoothnessAng = 20;
+
+                this.cameraType = 2;
             }
             function GUI()
             {
@@ -110,6 +113,7 @@
                 f1.add(settings, 'baseCakeH', 0.1, 5.0).name("tamaño altura torta").step(0.1).onChange(function() { setupBuffers();});
                 f1.add(settings, 'baseCakeCycles', 1.0, 10.0).name("cantidad ciclos torta").step(1.0).onChange(function() { setupBuffers();});
                 f1.add(settings, 'baseCakeAmplitude', 0.1, 1.0).name("amplitud ciclos torta").step(0.05).onChange(function() { setupBuffers();});
+                f1.add(settings, 'creamTurns', 1.0, 3.0).name("vueltas crema").step(1.0).onChange(function() { setupBuffers();});
                 var f2=gui.addFolder('torta0');
                 f2.add(settings, 'cakeNumDeco0', 0.0, 50.0).name("cantidad elem decorativos").step(1.0).onChange(function() { setupBuffers();});
                 f2.add(settings, 'cakeNumCont0', 0.0, 50.0).name("cantidad elem en contorno").step(1.0).onChange(function() { setupBuffers();});
@@ -120,6 +124,9 @@
                 f3.add(settings, 'cakeNumCont1', 0.0, 50.0).name("cantidad elem en contorno").step(1.0).onChange(function() { setupBuffers();});
                 f3.add(settings, 'cakeDecoType1', ["cherry","cono","fruit"]).name("tipo elemento decorativo").onChange(function() { setupBuffers();});
                 f3.add(settings, 'cakeContType1', ["boxy","tube"]).name("tipo elemento contorno").onChange(function() { setupBuffers();});
+                var f4=gui.addFolder('Definicion / smoothness');
+                f4.add(settings, 'cakeSmoothnessC', 1.0, 500.0).name("cantidad puntos curvas").step(1.0).onChange(function() { setupBuffers();});
+                f4.add(settings, 'cakeSmoothnessAng', 1.0, 500.0).name("cantidad puntos en angulo").step(1.0).onChange(function() { setupBuffers();});
                 f1.open();
 
 
@@ -177,12 +184,15 @@ window.addEventListener("keypress", function(event) {keyboard.handleKeyPress(eve
                 }
                 this.makeCurvePoints = function(np,matrix){
                     // np es el numero de puntos a usar. Acá no hace nada
-                    var res = this.ctrlPts_.slice();
+                    var res = [];
+                    var point = vec4.create();
                     var res2 = [];
 
                     if (matrix != null){
                         for (var i=0 ; i<this.ctrlPts_.length ; i++){
-                            vec4.transformMat4(res[i],res[i],matrix);
+                            var point = vec4.create();
+                            vec4.transformMat4(point,this.ctrlPts_[i],matrix);
+                            res.push(point);
                         }
                     }
                     for (var i=0 ; i<this.ctrlPts_.length ; i++){
@@ -242,6 +252,8 @@ window.addEventListener("keypress", function(event) {keyboard.handleKeyPress(eve
                 }
                 this.makeCurvePoints = function(np,matrix){
                     // np es el numero de puntos a usar
+                    // TODO corregir esto, tiene un problema cuando hago channel surface. Lo corregí
+                    // en el lineal pero acá es más difícil, y tiene que ver con como agarra las variables js
                     var oldPoints = this.ctrlPts_.slice();
                     var res = [];
 
@@ -950,7 +962,7 @@ window.addEventListener("keypress", function(event) {keyboard.handleKeyPress(eve
                 mat4.identity(m);
                 mat4.translate(m,m,[5,3+settings.diskH/2,0]);
                 mat4.rotate(m,m,settings.time*0.05,[0,1,0]);
-                //mat4.scale(m,m,[0.5,0.5,0.5]);
+                // mat4.scale(m,m,[0.5,0.5,0.5]);
                 sceneGlobal.children_[2].setMatrix(m);
                 settings.time = settings.time + settings.timeJump;
             }
@@ -984,7 +996,7 @@ window.addEventListener("keypress", function(event) {keyboard.handleKeyPress(eve
                 m = mat4.create();
                 mat4.identity(m);
                 mat4.translate(m,m,[dist,3+settings.diskH/2,0]);
-                mat4.scale(m,m,[0.5,0.5,0.5]);
+                // mat4.scale(m,m,[0.5,0.5,0.5]);
                 cake0.setMatrix(m);
                 scene.addSon(cake0);
                 cake0.setFather(scene);
@@ -995,7 +1007,7 @@ window.addEventListener("keypress", function(event) {keyboard.handleKeyPress(eve
                 m = mat4.create();
                 mat4.identity(m);
                 mat4.translate(m,m,[dist,3+settings.diskH/2,0]);
-                mat4.scale(m,m,[0.5,0.5,0.5]);
+                // mat4.scale(m,m,[0.5,0.5,0.5]);
                 cake1.setMatrix(m);
                 scene.addSon(cake1);
                 cake1.setFather(scene);
@@ -1008,7 +1020,7 @@ window.addEventListener("keypress", function(event) {keyboard.handleKeyPress(eve
             // Se entiende que cake es un objeto3D vacío al cual lo vamos a hacer torta...
             // Parámetros modificables: radio, altura, cantidad de ciclos y amplitud de onda (opt:suavidad, color)
                 var rad=settings.baseCakeR,h=settings.baseCakeH,nCycles=settings.baseCakeCycles,amplitude=settings.baseCakeAmplitude;
-                var smoothness_ang=80,smoothness_cur=25;
+                var smoothness_ang=settings.cakeSmoothnessAng,smoothness_cur=settings.cakeSmoothnessC;
                 var curve;
                 var curvePoints = [];
                 var point = vec4.create();
@@ -1077,7 +1089,7 @@ window.addEventListener("keypress", function(event) {keyboard.handleKeyPress(eve
                 // Se supone que cream es un objeto 3D
                 // Parámetro: vueltas de torsión, radio de la torta
                 var r=settings.creamR,nTurns=settings.creamTurns;
-                var smoothness_cur=5,smoothness_ang=6;
+                var smoothness_cur=5,smoothness_ang=120;
                 var curve;
                 var point;
                 var curvePoints = [];
@@ -1094,7 +1106,7 @@ window.addEventListener("keypress", function(event) {keyboard.handleKeyPress(eve
                     point = vec4.fromValues(R2*Math.cos((i*2+1)*2*Math.PI/10),R2*Math.sin((i*2+1)*2*Math.PI/10),0,1);
                     curvePoints.push(point);
                 }
-                point = vec4.fromValues(r,0,0,1);
+                point = vec4.fromValues(R,0,0,1);
                 curvePoints.push(point);
                 curve = new linearCurve();
                 curve.setControlPoints(curvePoints);
@@ -1107,8 +1119,9 @@ window.addEventListener("keypress", function(event) {keyboard.handleKeyPress(eve
                 for( var i=0 ; i < smoothness_ang ; i++){
                     m = mat4.create();
                     mat4.identity(m);
-                    mat4.translate(m, m, [3,0.0,0.0]);
-                    mat4.rotate(m,m,i*2*Math.PI/smoothness_ang,[0.0 , 1.0 , 0.0]);
+                    mat4.rotate(m,m,i*2*Math.PI/(smoothness_ang-1),[0.0 , 1.0 , 0.0]);
+                    mat4.translate(m, m, [r,0.0,0.0]);
+                    mat4.rotate(m,m,i*2*nTurns*Math.PI/(smoothness_ang-1),[0.0 , 0.0 , 1.0]);
                     ms.push(m);
                 }
                 grid.channelSurface(curve,smoothness_cur,ms);
@@ -1200,6 +1213,7 @@ window.addEventListener("keypress", function(event) {keyboard.handleKeyPress(eve
             function makeFruitSlice (frSlice)
             {
                 // TODO corregir esto
+                // TODO el error está probablemente en channeSurface(), o directamente en toda esa clase
                 var smoothness_ang=100,smoothness_cur=10, maxRad=0.3*Math.PI;
                 var curve;
                 var curvePoints = [];
@@ -1236,7 +1250,7 @@ window.addEventListener("keypress", function(event) {keyboard.handleKeyPress(eve
                 mat4.translate(m2,m2,[0,0,0.4]);
                 var m3 = mat4.create();
                 mat4.identity(m3);
-                mat4.translate(m3,m3,[0,0,0.4]);
+                mat4.translate(m3,m3,[0,0,0]);
                 mat4.scale(m3,m3,[0.05 , 0.05 , 1]);
                 // var ms = [m0 , m1 , m2 , m3];
                 var ms = [m0,m1 , m2,m3];
@@ -1357,7 +1371,7 @@ window.addEventListener("keypress", function(event) {keyboard.handleKeyPress(eve
                 cake.addSon(base);
                 base.setFather(cake);
 
-                var distTrans = rBase*0.7; // Distancia del centro donde van las decoraciones
+                var distTrans = rBase*0.6; // Distancia del centro donde van las decoraciones
                 var distTrans2 = rBase*1.2; // DIstancia del centro donde 
                 for (var i=0 ; i<numDeco ; i++)
                 {
@@ -1384,9 +1398,10 @@ window.addEventListener("keypress", function(event) {keyboard.handleKeyPress(eve
                     }else if (decoType == 'fruit') {
                         makeFruitSlice(deco);
                         mat4.identity(mde);
-                        mat4.rotate(mde,mde,i*2*Math.PI/numDeco,[0.0 , 0.0 , 0.0]);
-                        mat4.translate(mde,mde,[distTrans , hBase*1.2 , 0.0]);
+                        mat4.rotate(mde,mde,i*2*Math.PI/numDeco,[0.0 , 1.0 , 0.0]);
+                        mat4.translate(mde,mde,[distTrans , hBase*1.1 , 0.0]);
                         mat4.scale(mde,mde,[0.5,0.5,0.5]);
+                        mat4.rotate(mde,mde,Math.PI/2,[0.0 , -1.0 , 0.0]);
                         mat4.rotate(mde,mde,Math.PI/2,[1.0 , 0.0 , 0.0]);
                         deco.setMatrix(mde);
                         cake.addSon(deco);
@@ -1411,12 +1426,21 @@ window.addEventListener("keypress", function(event) {keyboard.handleKeyPress(eve
                         mat4.identity(mde);
                         mat4.rotate(mde,mde,i*2*Math.PI/numCont,[0.0 , 1.0 , 0.0]);
                         mat4.translate(mde,mde,[distTrans2 , 0.0, 0.0]);
-                        mat4.scale(mde,mde,[0.1,2.5,0.1]);
+                        mat4.scale(mde,mde,[0.1,2,0.1]);
                         thingy.setMatrix(mde);
                         cake.addSon(thingy);
                         thingy.setFather(cake);
                     }
                 }
+                cream = new Object3D();
+                makeCream(cream);
+                var mcr = mat4.create();
+                mat4.identity(mcr);
+                mat4.translate(mcr,mcr,[0.0 , settings.baseCakeH+settings.creamStarR/1.5 , 0.0]);
+                // mat4.scale(mcr,mcr,[0.2 , 0.2 , 0.2]);
+                cream.setMatrix(mcr);
+                cake.addSon(cream);
+                cream.setFather(cake);
             }
             function makeFloor(floor)
             {
