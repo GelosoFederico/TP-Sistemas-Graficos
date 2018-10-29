@@ -1,0 +1,1510 @@
+<!doctype html>
+<meta content="text/html;charset=ISO-8859-1" http-equiv="Content-Type">
+<meta content="ISO-8859-1" http-equiv="encoding">
+<html>
+    <head>
+        <title>TP</title>
+        <style>
+            body{ background-color: grey; }
+            canvas{ background-color: white; }
+			textarea{ background-color: black; foreground-color: white;}
+        </style>
+
+        <script type="text/javascript" src="gl-matrix.js"></script>
+        <script id="shader-fs" type="x-shader/x-fragment">
+        varying highp vec4 vColor;
+
+        void main(void) {
+          // gl_FragColor es una variable "built-in" de GLSL que es usada para 
+          // almacenar el color resultante del fragmento.
+          gl_FragColor = vColor;
+        }
+        </script>
+        <script id="shader-vs" type="x-shader/x-vertex">
+            // Los atributos son características propias de cada vertice.
+            attribute vec3 aVertexPosition;
+            attribute vec3 aVertexColor;
+
+            // Los uniforms son características propias de una etapa de dibujado completa.
+            // Son comunes a todos los vertices involucrados en el dibujado.
+            uniform mat4 modelMatrix;
+            uniform mat4 viewMatrix;
+            uniform mat4 projMatrix;
+
+            // Los varying son propiedades que toman valor para cada fragmento a partir
+            // de interpolar linealmente entre los valores que se les asigna en cada 
+            // vértice del polígono al cual pertenecen.
+            varying highp vec4 vColor;    
+ 
+            void main(void) {
+                // gl_Position es una variable "built-in" de GLSL que es usada para 
+                // almacenar la posición resultante del fragmento.
+                gl_Position = projMatrix * viewMatrix * modelMatrix * vec4(aVertexPosition, 1.0);
+                vColor = vec4(aVertexColor,1.0);
+            }
+        </script>
+	    <script type="text/javascript" src="dat.gui.min.js"></script>
+
+        <script>
+            // ----- COSAS DEL TEST BÁSICO ------------ //
+            var gl = null,
+                canvas = null,
+                glProgram = null,
+                fragmentShader = null,
+                vertexShader = null,
+                t = 0.0;
+            var sceneGlobal = new Object3D();
+            var settings = new globalSetting();
+            var basic_thing = null;
+            var basic_thing2 = null;
+            var basic_thing3 = null;
+            var thing4 = null;
+            var test_curva = null;
+            var keyboard = new keyboardController();
+
+//GUI();
+
+            var mvMatrix = mat4.create();
+            var pMatrix = mat4.create();
+            // ----- END COSAS DEL TEST BÁSICO ------------ //
+// ------------------ SETTINGS -------------------------
+            function globalSetting() {
+                // La idea es que acá estén todas las cosas que se puedan modifica fácilmente
+                // ( Cosas paramétricas )
+
+                // Smoothness de las cosas podría estar acá
+
+                this.timeJump = 0.05;
+                this.time = 0;
+
+                this.baseCakeR = 2.5;
+                this.baseCakeH = 2.0;
+                this.baseCakeCycles = 3;
+                this.baseCakeAmplitude = 0.3;
+
+                this.creamR = 2.0;
+                this.creamTurns = 2;
+                this.creamStarR = 1;
+
+                this.diskR = 4;
+                this.diskH = 0.5;
+
+                this.cakeNumDeco0 = 1;
+                this.cakeNumCont0 = 3;
+                this.cakeDecoType0 = 'fruit';
+                this.cakeContType0 = 'boxy';
+
+                this.cakeNumDeco1 = 3;
+                this.cakeNumCont1 = 2;
+                this.cakeDecoType1 = 'cherry';
+                this.cakeContType1 = 'boxy';
+
+                this.cameraType = 1;
+            }
+            function GUI()
+            {
+		        var gui = new dat.GUI();		
+
+		        var f1 = gui.addFolder('tortas');		
+                f1.add(settings, 'baseCakeR', 0.5, 5.0).name("tamaño base torta").step(0.1).onChange(function() { setupBuffers();});
+                f1.add(settings, 'baseCakeH', 0.1, 5.0).name("tamaño altura torta").step(0.1).onChange(function() { setupBuffers();});
+                f1.add(settings, 'baseCakeCycles', 1.0, 10.0).name("cantidad ciclos torta").step(1.0).onChange(function() { setupBuffers();});
+                f1.add(settings, 'baseCakeAmplitude', 0.1, 1.0).name("amplitud ciclos torta").step(0.05).onChange(function() { setupBuffers();});
+                var f2=gui.addFolder('torta0');
+                f2.add(settings, 'cakeNumDeco0', 0.0, 50.0).name("cantidad elem decorativos").step(1.0).onChange(function() { setupBuffers();});
+                f2.add(settings, 'cakeNumCont0', 0.0, 50.0).name("cantidad elem en contorno").step(1.0).onChange(function() { setupBuffers();});
+                f2.add(settings, 'cakeDecoType0', ["cherry","cono","fruit"]).name("tipo elemento decorativo").onChange(function() { setupBuffers();});
+                f2.add(settings, 'cakeContType0', ["boxy","tube"]).name("tipo elemento contorno").onChange(function() { setupBuffers();});
+                var f3=gui.addFolder('torta1');
+                f3.add(settings, 'cakeNumDeco1', 0.0, 50.0).name("cantidad elem decorativos").step(1.0).onChange(function() { setupBuffers();});
+                f3.add(settings, 'cakeNumCont1', 0.0, 50.0).name("cantidad elem en contorno").step(1.0).onChange(function() { setupBuffers();});
+                f3.add(settings, 'cakeDecoType1', ["cherry","cono","fruit"]).name("tipo elemento decorativo").onChange(function() { setupBuffers();});
+                f3.add(settings, 'cakeContType1', ["boxy","tube"]).name("tipo elemento contorno").onChange(function() { setupBuffers();});
+                f1.open();
+
+
+            }
+
+// --------------------- MANEJO DE TECLADO Y MOUSE ---------------
+window.addEventListener("keypress", function(event) {keyboard.handleKeyPress(event);}, false);
+
+            function keyboardController() 
+            {
+                this.pressedKeys = null; // Acá por ahí tengo que hacer una lista para ver si hay más de una
+
+                this.handleKeyPress = function (event)
+                {
+                    this.pressedKeys = event.key;
+                    switch(this.pressedKeys)
+                    {
+                        case '0':
+                        case '1':
+                        case '2':
+                        case '3':
+                        case '4':
+                        case '5':
+                            settings.cameraType = parseInt(this.pressedKeys);
+                            break;
+                        default:
+                            // console.log("Don't understand pressed key");
+                    }
+                    /*
+                    if (this.pressedKeys >47 && this.pressedKeys < 58){
+                        settings.cameraType = this.pressedKeys-48; // 48 es el numero 0
+                    }
+                    */
+
+                }
+            }
+
+// ------------------ CURVAS --------------------------
+            // Clases dedicadas a las curvas
+            function linearCurve() {
+                this.ctrlPts_ = null;
+
+                this.setControlPoints = function(ctrlPts){
+                    // Se espera que ctrlPts sean un arreglo de 4 vec4 
+                    if(ctrlPts == null ){
+                        console.log("Error calling linear");
+                        return;
+                    }
+                    this.ctrlPts_ = ctrlPts;
+                }
+                this.transformControlPoints = function(matrix){
+                    for (var i=0 ; i<this.ctrlPts_.length ; i++){
+                        vec4.transformMat4(this.ctrlPts_[i],this.ctrlPts_[i],matrix);
+                    }
+                }
+                this.makeCurvePoints = function(np,matrix){
+                    // np es el numero de puntos a usar. Acá no hace nada
+                    var res = this.ctrlPts_.slice();
+                    var res2 = [];
+
+                    if (matrix != null){
+                        for (var i=0 ; i<this.ctrlPts_.length ; i++){
+                            vec4.transformMat4(res[i],res[i],matrix);
+                        }
+                    }
+                    for (var i=0 ; i<this.ctrlPts_.length ; i++){
+                        for(var j=0 ; j<3 ; j++){
+                            res2.push(res[i][j]);
+                        }
+                    }
+                    return res2;
+                }
+            }
+
+// ------------------ Bspline Cuadrático --------------------------
+            function BsplineQuadratic() {
+                this.ctrlPts_ = null;
+
+                this.setControlPoints = function(ctrlPts){
+                    // Se espera que ctrlPts sean un arreglo de 4 vec4 
+                    if(ctrlPts == null ){
+                        console.log("Error calling bsplineQuadratic");
+                        return;
+                    }
+                    this.ctrlPts_ = ctrlPts;
+                }
+
+		        this._b0 = function(u){
+			        return 0.5*(1-u)*(1-u);
+		        }
+		        this._b1 = function(u){
+		        	return 0.5+(1-u)*u;
+		        }
+		        this._b2 = function(u){
+			        return 0.5*u*u;
+		        }
+                this.evaluate = function(u){
+
+                    var uLocal = u%1.0;
+                    var segment= Math.round(u-uLocal);
+                    if (segment == this.ctrlPts_.length-2){
+                        uLocal = 1.0;
+                        segment = this.ctrlPts_.length-3;
+                    }
+                    var point = new Array(3);
+                    var b0 = this._b0(uLocal);
+                    var b1 = this._b1(uLocal);
+                    var b2 = this._b2(uLocal);
+
+                    for (var i=0 ; i<3 ; i++){
+                        point[i] = b0 * this.ctrlPts_[segment][i] + b1 * this.ctrlPts_[segment+1][i] +b2 * this.ctrlPts_[segment+2][i];
+                    }
+                    return point;
+                }
+                this.transformControlPoints = function(matrix){
+                    for (var i=0 ; i<this.ctrlPts_.length ; i++){
+                        vec4.transformMat4(this.ctrlPts_[i],this.ctrlPts_[i],matrix);
+                        // this.ctrlPts_[i] = matrix * (this.ctrlPts_[i]);
+                    }
+                }
+                this.makeCurvePoints = function(np,matrix){
+                    // np es el numero de puntos a usar
+                    var oldPoints = this.ctrlPts_.slice();
+                    var res = [];
+
+                    if (matrix != null){
+                        this.transformControlPoints(matrix);
+                    }
+                    var segments = this.ctrlPts_.length-2;
+                    for (var j=0 ; j<np ; j++){
+                        res = res.concat(this.evaluate(j*segments/(np-1)));
+                    }
+                    /*
+                    for (var i=0 ; i<this.ctrlPts_.length-2; i++){
+                        for (var j=0 ; j<np ; j++){
+                            res = res.concat(this.evaluate((j/(np-1))+i));
+                        }
+                    }
+                    */
+                    this.setControlPoints(oldPoints);
+                    return res;
+                }
+            }
+
+// ------------------ Bezier Cúbica --------------------------
+            function BezierCubic() {
+                // this.ctrlPts_ = null;
+                this.ctrlPts_ = null;
+
+                this.setControlPoints = function(ctrlPts){
+                    // Se espera que ctrlPts sean un arreglo de 4 vec4 
+                    if(ctrlPts == null ){
+                        console.log("Error calling bezierCubic ");
+                        return;
+                    }
+                    this.ctrlPts_ = ctrlPts;
+                }
+		        this._b0 = function(u){
+			        return (1-u)*(1-u)*(1-u);
+		        }
+		        this._b1 = function(u){
+		        	return 3*(1-u)*(1-u)*u;
+		        }
+		        this._b2 = function(u){
+			        return 3*(1-u)*u*u;
+		        }
+		        this._b3 = function(u){
+    		    	    return u*u*u;
+	    	    }
+
+                
+                this.evaluate = function(u){
+                    // La cantidad de segmentos es floor((ctrlPts.length-1)/3)
+
+                    var uLocal = u%1.0;
+                    var segment= Math.round(u-uLocal);
+                    if (segment == Math.floor((this.ctrlPts_.length-1)/3)){
+                        uLocal = 1.0;
+                        segment = Math.floor((this.ctrlPts_.length-1)/3)-1;
+                    }
+
+                    var point = new Array(3);
+                    var b0 = this._b0(uLocal);
+                    var b1 = this._b1(uLocal);
+                    var b2 = this._b2(uLocal);
+                    var b3 = this._b3(uLocal);
+
+                    for (var i=0 ; i<3 ; i++){
+                        point[i] = b0 * this.ctrlPts_[segment*3][i] + b1 * this.ctrlPts_[segment*3+1][i] +b2 * this.ctrlPts_[segment*3+2][i] +b3 * this.ctrlPts_[segment*3+3][i];
+                    }
+                    return point;
+                }
+
+                this.transformControlPoints = function(matrix){
+                    for (var i=0 ; i<this.ctrlPts_.length ; i++){
+                        vec4.transformMat4(this.ctrlPts_[i],this.ctrlPts_[i],matrix);
+                    }
+                }
+                this.makeCurvePoints = function(np,matrix){
+                    // np es el numero de puntos a usar
+                    var oldPoints = this.ctrlPts_.slice();
+                    var res = [];
+
+                    if (matrix != null){
+                        this.transformControlPoints(matrix);
+                    }
+                    var segments = Math.floor((this.ctrlPts_.length-1)/3);
+                    for (var j=0 ; j<np ; j++){
+                        res = res.concat(this.evaluate(j*segments/(np-1)));
+                    }
+                    this.setControlPoints(oldPoints);
+                    return res;
+                }
+                this.draw = function(n,matrix){
+                    // Esto es para debugging principalmente
+
+                    var curve_points = this.makeCurvePoints(n);
+
+                    var pos_buf = gl.createBuffer();
+                    gl.bindBuffer(gl.ARRAY_BUFFER, pos_buf);
+                    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(curve_points), gl.STATIC_DRAW);
+
+                    var col_buf = gl.createBuffer();
+                    gl.bindBuffer(gl.ARRAY_BUFFER, col_buf);
+                    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(curve_points), gl.STATIC_DRAW);   
+
+                    var ind_buf = gl.createBuffer();
+                    var index_p = [];
+                    for (var i=0.0 ; i<n ; i++){
+                        index_p.push(i);
+                    }
+                    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, ind_buf);
+                    gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(index_p), gl.STATIC_DRAW);
+
+                    var modelMatrixUniform = gl.getUniformLocation(glProgram, "modelMatrix");
+                    gl.uniformMatrix4fv(modelMatrixUniform, false, matrix);
+
+                    var vertexPositionAttribute = gl.getAttribLocation(glProgram, "aVertexPosition");
+                    gl.enableVertexAttribArray(vertexPositionAttribute);
+                    gl.bindBuffer(gl.ARRAY_BUFFER, pos_buf);
+                    gl.vertexAttribPointer(vertexPositionAttribute, 3, gl.FLOAT, false, 0, 0);
+
+                    var vertexColorAttribute = gl.getAttribLocation(glProgram, "aVertexColor");
+                    gl.enableVertexAttribArray(vertexColorAttribute);
+                    gl.bindBuffer(gl.ARRAY_BUFFER, col_buf);
+                    gl.vertexAttribPointer(vertexColorAttribute, 3, gl.FLOAT, false, 0, 0);
+
+                    gl.bindBuffer(gl.ARRAY_BUFFER, pos_buf);
+                    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, ind_buf);
+
+                    // Dibujamos.
+                    gl.drawElements(gl.LINE_STRIP,n, gl.UNSIGNED_SHORT, 0);
+                }
+
+
+            }
+// ----------------------- OBJETO 3D ---------------------
+            // Objeto Object3D
+            // Tiene que tener un buffer asociado, matriz de tranformación, hijos y dibujar()
+            function Object3D () {
+                // Atributos
+                this.vertexGrid_ = null; // TODO Esto debería ser reemplazado por un puntero al grid u objeto
+                this.matrix_ = null;
+                this.father_ = null;
+                this.children_ = null;
+
+                // Métodos
+                this.setVertexGrid = function(grid){
+                    this.vertexGrid_ = grid;
+                }
+                this.setMatrix = function(matrix){
+                    this.matrix_ = matrix;
+                }
+                this.setFather = function(father){
+                    this.father_ = father;
+                }
+                this.setFatherFull = function(father){
+                    // Función no testeada
+                    this.father_ = father;
+                    father.addSon(this);
+                }
+                this.addSon = function(son){
+                    if(this.children_ == null){
+                        this.children_ = [];
+                        this.children_.push(son);
+                    }else{
+                        this.children_.push(son);
+                    }
+                }
+                this.draw = function(matrix){
+                    var new_mat=mat4.create();
+                    if(matrix != null && this.matrix_ != null){
+                        mat4.multiply(new_mat,matrix,this.matrix_);
+                    }else{
+                        new_mat = null;
+                    }
+                    if(this.vertexGrid_ != null){ // Si tiene un modelo
+		                this.vertexGrid_.setupWebGLBuffers();
+                        this.vertexGrid_.drawVertexGrid(new_mat);
+                    }
+                    if (this.children_ != null){
+                        for(var i=0 ; i<this.children_.length ; i++){
+                            this.children_[i].draw(new_mat);
+                        }
+                    }
+                }
+                this.debugPrint = function(){
+                    console.log(this.matrix_);
+                    if(this.vertexGrid_ != null){
+                        this.vertexGrid_.debugPrint();
+                    }else{
+                        console.log("Empty node");
+                    }
+                    if(this.children_ != null){
+                        for(var i=0;i<this.children_.length;i++){
+                            this.children_[i].debugPrint();
+                        }
+                    }
+                }
+            }
+
+
+
+// ------------------- VERTEX GRID --------------------
+            // OBJETO VERTEX-GRID
+            // Definimos un constructor para el objeto VertexGrid
+            function VertexGrid (_rows, _cols) {
+                this.cols = _cols;
+                this.rows = _rows;
+
+                this.position_buffer = null;
+                this.color_buffer = null;
+                this.index_buffer = null;
+
+                this.webgl_position_buffer = null;
+                this.webgl_color_buffer = null;
+                this.webgl_index_buffer = null;
+
+                this.createIndexBuffer = function(){
+                    // Se recorren los índices para que tenga la forma correcta
+                    if(!(this._rows < 2.0 || this._cols < 2.0) ){
+                        // Si tiene solo 1 columna o solo 1 fila no se puede hacer una grilla
+                        this.index_buffer = [];
+                        for (var i=0.0 ; i < this.rows-1 ; i++) {
+                            for( var j=0.0 ; j < this.cols ; j++) {
+                                this.index_buffer.push(j + (i*this.cols) );
+                                this.index_buffer.push(j + ((i+1)*this.cols) );
+                            }
+                            if(i == this.rows-2){
+                                // En este punto ya terminé, no sigo ni agrego el último punto
+                                break;
+                            }
+                            i++;
+                            for( var j=this.cols-1 ; j > -1 ; j--) {
+                                this.index_buffer.push(j + (i*this.cols) );
+                                this.index_buffer.push(j + ((i+1)*this.cols) );
+                            }
+                            if(i == this.rows-2)
+                                break;
+                        }
+                    }
+                }
+
+                // Esta función inicializa el position_buffer y el color buffer de forma de 
+                // crear un plano de color gris que se extiende sobre el plano XY, con Z=0
+                // El plano se genera centrado en el origen.
+                // El propósito de esta función es a modo de ejemplo de como inicializar y cargar
+                // los buffers de las posiciones y el color para cada vértice.
+                this.createUniformPlaneGrid = function(){
+
+                    this.position_buffer = [];
+                    this.color_buffer = [];
+
+                    for (var i = 0.0; i < this.rows; i++) { 
+                       for (var j = 0.0; j < this.cols; j++) {
+
+                           // Para cada vértice definimos su posición
+                           // como coordenada (x, y, z=0)
+                           this.position_buffer.push(i-(this.rows-1)/2);
+                           this.position_buffer.push(j-(this.cols-1)/2);
+                           this.position_buffer.push(0);
+
+                           // Para cada vértice definimos su color
+                           this.color_buffer.push(1.0/this.rows * i);
+                           this.color_buffer.push(0.2);
+                           this.color_buffer.push(1.0/this.cols * j);
+                                                  
+                       };
+                    };
+                }
+                this.createCilinderGrid = function(closed, color){
+
+                    this.position_buffer = [];
+                    this.color_buffer = [];
+
+                    for (var i = 0.0; i < this.rows; i++) { 
+                       for (var j = 0.0; j < this.cols; j++) {
+
+                           // Para cada vértice definimos su posición
+                           // como coordenada (x, y, z=0)
+                           if(closed == true){
+                               if( i==0){ // Tapa inferior
+                                    this.position_buffer.push(0);
+                                    this.position_buffer.push(i);
+                                    this.position_buffer.push(0);
+                               }else {
+                                   if(i == (this.rows-1) ){ // Tapa superior
+                                        this.position_buffer.push(0);
+                                        this.position_buffer.push(i-2);
+                                        this.position_buffer.push(0);
+                                    }else{
+                                    this.position_buffer.push(Math.cos(j*2*Math.PI/(this.cols-1)));
+                                    this.position_buffer.push(i-1);
+                                    this.position_buffer.push(Math.sin(j*2*Math.PI/(this.cols-1)));
+                                    }
+                               }
+                           }else {
+                               // Sin tapa
+                               this.position_buffer.push(Math.cos(j*2*Math.PI/(this.cols-1)));
+                               this.position_buffer.push(i);
+                               this.position_buffer.push(Math.sin(j*2*Math.PI/(this.cols-1)));
+                           }
+                           // Para cada vértice definimos su color
+                           if(color== null || (color.length !=1 && color.length != 3) ){
+                               this.color_buffer.push(1.0/this.rows * i);
+                               this.color_buffer.push(0.2);
+                               this.color_buffer.push(1.0/this.cols * j);
+                           }else if(color.length == 1){
+                               this.color_buffer.push(color);
+                               this.color_buffer.push(color);
+                               this.color_buffer.push(color);
+                           }else if(color.length == 3){
+                               this.color_buffer.push(color[0]);
+                               this.color_buffer.push(color[1]);
+                               this.color_buffer.push(color[2]);
+                           }
+                       };
+                    };
+                }
+                this.createSurfaceRevolution = function(curve,n,c,maxDeg){
+                    // n: cantidad de puntos en la curva.
+                    // c: cantidad de angulos
+                    // maxDeg: Si está definido es hasta qué angulo gira
+                    this.rows = c;
+                    this.cols = n;
+                    this.position_buffer = [];
+                    this.color_buffer = [];
+                    var points = [];
+                    var m = mat4.create();
+                    var m2 = mat4.create();
+                    mat4.identity(m);
+                    var finalDeg = Math.PI*2;
+                    if( maxDeg!=null){
+                        finalDeg = maxDeg;
+                    }
+                    for (var i=0 ; i<c; i++){
+                        points = [];
+                        mat4.rotate(m2,m,finalDeg/(c-1),[0.0 , 1.0 , 0.0]);
+                        points = curve.makeCurvePoints(n,m2);
+                        this.position_buffer = this.position_buffer.concat(points);
+                    }
+                    this.cols = Math.round(points.length/3);
+                    // Color buffer, puesto de tal manera que se pueda identificar el sombreado
+                    this.color_buffer = this.position_buffer.slice();
+                    var ma = this.color_buffer[0];
+                    for (var i=0 ; i<this.color_buffer.length ; i++){
+                        if (this.color_buffer[i] > ma){
+                            ma = this.color_buffer[i];
+                        }
+                    }
+                    for(var i=0 ; i<this.color_buffer.length ; i++){
+                        this.color_buffer[i] /= ma;
+                    }
+                }
+
+
+                this.channelSurface = function(curve,n,directrix){
+                    // Se harán niveles en cada punto de la directriz, las cuales son matrices que irán transformando los puntos de control
+                    // curve es la curva a partir de la cual salen los puntos, y n es la cantida de puntos.
+
+                    this.rows = directrix.length;
+                    this.cols = n;
+                    this.position_buffer = [];
+                    this.color_buffer = [];
+                    var points = [];
+                    for (var i=0 ; i<directrix.length ; i++){
+                        points = [];
+                        points = curve.makeCurvePoints(n,directrix[i]);
+                        this.position_buffer = this.position_buffer.concat(points);
+                    }
+                    this.cols = points.length/3;
+
+                    this.color_buffer = this.position_buffer.slice();
+                    var ma = this.color_buffer[0];
+                    for (var i=0 ; i<this.color_buffer.length ; i++){
+                        if (this.color_buffer[i] > ma){
+                            ma = this.color_buffer[i];
+                        }
+                    }
+                    for(var i=0 ; i<this.color_buffer.length ; i++){
+                        this.color_buffer[i] /= ma;
+
+                    }
+                }
+
+                this.debugPrint = function(){
+                    console.log(this.position_buffer.toString());
+                    console.log(this.index_buffer.toString());
+                }
+
+
+                // Esta función crea e incializa los buffers dentro del pipeline para luego
+                // utlizarlos a la hora de renderizar.
+                this.setupWebGLBuffers = function(){
+
+                    if (this.webgl_index_buffer!=null){
+                        return;
+                    }
+                    // 1. Creamos un buffer para las posiciones dentro del pipeline.
+                    this.webgl_position_buffer = gl.createBuffer();
+                    // 2. Le decimos a WebGL que las siguientes operaciones que vamos a ser se aplican sobre el buffer que
+                    // hemos creado.
+                    gl.bindBuffer(gl.ARRAY_BUFFER, this.webgl_position_buffer);
+                    // 3. Cargamos datos de las posiciones en el buffer.
+                    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(this.position_buffer), gl.STATIC_DRAW);
+
+                    // Repetimos los pasos 1. 2. y 3. para la información del color
+                    this.webgl_color_buffer = gl.createBuffer();
+                    gl.bindBuffer(gl.ARRAY_BUFFER, this.webgl_color_buffer);
+                    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(this.color_buffer), gl.STATIC_DRAW);   
+
+                    // Repetimos los pasos 1. 2. y 3. para la información de los índices
+                    // Notar que esta vez se usa ELEMENT_ARRAY_BUFFER en lugar de ARRAY_BUFFER.
+                    // Notar también que se usa un array de enteros en lugar de floats.
+                    this.webgl_index_buffer = gl.createBuffer();
+                    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.webgl_index_buffer);
+                    gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(this.index_buffer), gl.STATIC_DRAW);
+
+                }
+
+
+                // Esta función es la que se encarga de configurar todo lo necesario
+                // para dibujar el VertexGrid.
+                // En el caso del ejemplo puede observarse que la última línea del método
+                // indica dibujar triángulos utilizando los 6 índices cargados en el Index_Buffer.
+                //
+                this.drawVertexGrid = function(matrix){
+
+                    // Cargo la matriz TODO: esto esta bien?
+                    if (matrix == null){
+                        matrix = mat4.create();
+                        mat4.identity(matrix);
+                    }
+
+                    var modelMatrixUniform = gl.getUniformLocation(glProgram, "modelMatrix");
+                    gl.uniformMatrix4fv(modelMatrixUniform, false, matrix);
+
+                    var vertexPositionAttribute = gl.getAttribLocation(glProgram, "aVertexPosition");
+                    gl.enableVertexAttribArray(vertexPositionAttribute);
+                    gl.bindBuffer(gl.ARRAY_BUFFER, this.webgl_position_buffer);
+                    gl.vertexAttribPointer(vertexPositionAttribute, 3, gl.FLOAT, false, 0, 0);
+
+                    var vertexColorAttribute = gl.getAttribLocation(glProgram, "aVertexColor");
+                    gl.enableVertexAttribArray(vertexColorAttribute);
+                    gl.bindBuffer(gl.ARRAY_BUFFER, this.webgl_color_buffer);
+                    gl.vertexAttribPointer(vertexColorAttribute, 3, gl.FLOAT, false, 0, 0);
+
+                    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.webgl_index_buffer);
+
+                    // Dibujamos.
+                    gl.drawElements(gl.TRIANGLE_STRIP, (this.cols)*(this.rows-1)*2, gl.UNSIGNED_SHORT, 0);
+                }
+            }
+
+// ---------------------------- UTIS -----------------
+
+            function getShader(gl, id) {
+                var shaderScript, src, currentChild, shader;
+
+                // Obtenemos el elemento <script> que contiene el código fuente del shader.
+                shaderScript = document.getElementById(id);
+                if (!shaderScript) {
+                    return null;
+                }
+
+                // Extraemos el contenido de texto del <script>.
+                src = "";
+                currentChild = shaderScript.firstChild;
+                while(currentChild) {
+                    if (currentChild.nodeType == currentChild.TEXT_NODE) {
+                        src += currentChild.textContent;
+                    }
+                    currentChild = currentChild.nextSibling;
+                }
+
+                // Creamos un shader WebGL según el atributo type del <script>.
+                if (shaderScript.type == "x-shader/x-fragment") {
+                    shader = gl.createShader(gl.FRAGMENT_SHADER);
+                } else if (shaderScript.type == "x-shader/x-vertex") {
+                    shader = gl.createShader(gl.VERTEX_SHADER);
+                } else {
+                    return null;
+                }
+
+                // Le decimos a WebGL que vamos a usar el texto como fuente para el shader.
+                gl.shaderSource(shader, src);
+
+                // Compilamos el shader.
+                gl.compileShader(shader);  
+                  
+                // Chequeamos y reportamos si hubo algún error.
+                if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {  
+                  alert("An error occurred compiling the shaders: " + 
+                        gl.getShaderInfoLog(shader));  
+                  return null;  
+                }
+                  
+                return shader;
+            }
+
+            function initWebGL()
+            {
+                canvas = document.getElementById("my-canvas");  
+                try{
+                    gl = canvas.getContext("webgl") || canvas.getContext("experimental-webgl");                    
+                }catch(e){
+                }
+                                
+                if(gl)
+                {
+                    GUI();
+                    setupWebGL();
+                    initShaders();
+                    setupBuffers();
+                    drawScene();
+                    setInterval(updateScene, 10);  
+                    setInterval(drawScene, 10);  
+                }else{    
+                    alert(  "Error: Your browser does not appear to support WebGL.");
+                }
+            }
+            
+            function setupWebGL()
+            {
+                //set the clear color
+                gl.clearColor(0.1, 0.1, 0.2, 1.0);     
+                gl.enable(gl.DEPTH_TEST);                              
+                gl.depthFunc(gl.LEQUAL); 
+                gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);
+                
+                gl.viewport(0, 0, canvas.width, canvas.height);
+            }
+            
+            function initShaders()
+            {
+                // Obtenemos los shaders ya compilados
+                var fragmentShader = getShader(gl, "shader-fs");
+                var vertexShader = getShader(gl, "shader-vs");
+
+                // Creamos un programa de shaders de WebGL.
+                glProgram = gl.createProgram();
+
+                // Asociamos cada shader compilado al programa.
+                gl.attachShader(glProgram, vertexShader);
+                gl.attachShader(glProgram, fragmentShader);
+
+                // Linkeamos los shaders para generar el programa ejecutable.
+                gl.linkProgram(glProgram);
+
+                // Chequeamos y reportamos si hubo algún error.
+                if (!gl.getProgramParameter(glProgram, gl.LINK_STATUS)) {
+                  alert("Unable to initialize the shader program: " + 
+                        gl.getProgramInfoLog(glProgram));
+                  return null;
+                }
+  
+                // Le decimos a WebGL que de aquí en adelante use el programa generado.
+                gl.useProgram(glProgram);
+            }
+            
+            function makeShader(src, type)
+            {
+                //compile the vertex shader
+                var shader = gl.createShader(type);
+                gl.shaderSource(shader, src);
+                gl.compileShader(shader);
+
+                if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+                    alert("Error compiling shader: " + gl.getShaderInfoLog(shader));
+                }
+                return shader;
+            }
+            
+            function setupBuffers()
+            {
+                // Lo ideal es que la cosa sepa que cosas se actualizaron, pero lo ponemos así
+                sceneGlobal = new Object3D();
+                makeScene(sceneGlobal);
+
+                /*
+                my_grid = new VertexGrid(4,5);
+                my_grid.createCilinderGrid(true,[0.33, 0.16, 0.16]);
+                my_grid.createIndexBuffer();
+                // my_grid.setupWebGLBuffers();
+
+                basic_thing = new Object3D();
+                var mat = mat4.create();
+                mat4.identity(mat);
+                //mat4.scale(mat,mat,[0.3,0.3,1.0]);
+                //mat4.rotate(mat, mat, 0.3, [1.0, 0.0, 0.0]);
+                basic_thing.setMatrix(mat);
+                //basic_thing.setVertexGrid(my_grid);
+
+                thing4 = new Object3D();
+                var mat = mat4.create();
+                mat4.identity(mat);
+                thing4.setMatrix(mat);
+                makeAssemblyLine(thing4);
+                var me = mat4.create();
+                mat4.identity(me);
+                //mat4.scale(me,me,[1.0,1.0,1.0]);
+                //mat4.translate(me,me,[0.0 , 0.0 , 0.0]);
+                thing4.setMatrix(me);
+                thing4.debugPrint();
+
+                basic_thing.addSon(thing4);
+                thing4.setFather(basic_thing);
+
+                my_grid2 = new VertexGrid(7,5);
+                my_grid2.createCilinderGrid(false);
+                my_grid2.createIndexBuffer();
+
+                basic_thing2 = new Object3D();
+                var mat2 = mat4.create();
+                mat4.identity(mat2);
+                mat4.translate(mat2, mat2, [0.0, 4.0, 0.0]);
+                basic_thing2.setMatrix(mat2);
+                basic_thing2.setVertexGrid(my_grid2);
+                basic_thing3.setFather(basic_thing);
+                basic_thing.addSon(basic_thing3);
+                // basic_thing2.setFather(basic_thing);
+                // basic_thing.addSon(basic_thing2);
+                */
+            }
+            
+            function selectCameraAndPerspective()
+            {
+                // pMatrix es la matriz de perspectiva, mvMatrix es la de vista (la cámara)
+                var u_proj_matrix = gl.getUniformLocation(glProgram, "projMatrix");
+                var u_view_matrix = gl.getUniformLocation(glProgram, "viewMatrix");
+
+                switch(settings.cameraType)
+                {
+                    case 0: // Camara general
+                        break;
+                    case 1: // Orbital con centro en escena
+                        mat4.identity(mvMatrix);
+                        mat4.lookAt(mvMatrix, [25 , 10 , 17.5] , [5 , 3 , 0] , [0,1,0]);
+                        mat4.perspective(pMatrix, 45, 640.0/480.0, 0.1, 100.0);
+                        break;
+                    case 2: // Orbital con centro en torta 1
+                        mat4.identity(mvMatrix);
+                        mat4.lookAt(mvMatrix, [15.5 , 12 , 1.5] , [5 , 3 , 0] , [0,1,0]);
+                        mat4.perspective(pMatrix, 45, 640.0/480.0, 0.1, 100.0);
+                        break;
+                    case 3: // Orbital con centro en torta 2
+                        mat4.identity(mvMatrix);
+                        mat4.lookAt(mvMatrix, [10 , 40 , 0] , [9 , 0 , 0] , [0,1,0]);
+                        mat4.perspective(pMatrix, 45, 640.0/480.0, 0.1, 100.0);
+                        break;
+                    case 4: // Ortográfica lateral
+                        mat4.identity(mvMatrix);
+                        mat4.lookAt(mvMatrix, [9 , 6 , 25] , [9 , 6 , 0] , [0,1,0]);
+                        mat4.ortho(pMatrix,-14,14,-6,6,-50,50);
+                        break;
+                    case 5: // Ortográfica superior 
+                        mat4.identity(mvMatrix);
+                        mat4.lookAt(mvMatrix, [10 , 40 , 0] , [9 , 0 , 0] , [0,1,0]);
+                        mat4.ortho(pMatrix,-15,15,-15,15,-50,50);
+                        break;
+                    default:
+                        mat4.identity(mvMatrix);
+                        mat4.translate(mvMatrix, mvMatrix, [0.0, 0.0, -5.0]);
+                        mat4.lookAt(mvMatrix, [5 , 60 , 0] , [5 , 0 , 0] , [0,1,0]);
+                        console.log("cameraType unidentified");
+                }
+
+                gl.uniformMatrix4fv(u_proj_matrix, false, pMatrix);
+
+                gl.uniformMatrix4fv(u_view_matrix, false, mvMatrix);
+            }
+            function drawScene()
+            {
+                gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+
+                /*
+                // Matriz de perspectiva
+                selectCameraAndPerspective();
+                var u_proj_matrix = gl.getUniformLocation(glProgram, "projMatrix");
+                mat4.perspective(pMatrix, 45, 640.0/480.0, 0.1, 100.0);
+                gl.uniformMatrix4fv(u_proj_matrix, false, pMatrix);
+
+                // Matriz de vista
+                var u_view_matrix = gl.getUniformLocation(glProgram, "viewMatrix");
+                mat4.identity(mvMatrix);
+                mat4.translate(mvMatrix, mvMatrix, [0.0, 0.0, -5.0]);
+                mat4.lookAt(mvMatrix, [12 , 10 , 25] , [0 , 0 , 0] , [0,1,0]);
+                gl.uniformMatrix4fv(u_view_matrix, false, mvMatrix);
+                */
+
+                selectCameraAndPerspective();
+                var mat = mat4.create();
+                mat4.identity(mat);
+                //mat4.rotate(mat, mat, t/8, [1.0, 0.0, 0.0]);
+                sceneGlobal.setMatrix(mat);
+                var mat = mat4.create();
+                mat4.identity(mat);
+                //mat4.rotate(mat, mat, t/8, [1.0, 0.0, 0.0]);
+                sceneGlobal.draw(mat);
+            }
+// ------------- FUNCIÓN PARA DISPONER LA ESCENA -----------
+            function updateScene()
+            {
+                // TODO animación
+                // Esto es para la animación
+                var dist = 5+(settings.time%10);
+                var m = mat4.create();
+                mat4.identity(m);
+                mat4.translate(m,m,[5,3+settings.diskH/2,0]);
+                mat4.rotate(m,m,settings.time*0.05,[0,1,0]);
+                //mat4.scale(m,m,[0.5,0.5,0.5]);
+                sceneGlobal.children_[2].setMatrix(m);
+                settings.time = settings.time + settings.timeJump;
+            }
+
+            function makeScene(scene)
+            {
+                var m = null;
+
+                var floor = new Object3D();
+                makeFloor(floor);
+                m = mat4.create();
+                mat4.identity(m);
+                mat4.translate(m,m,[0 , 0.1 , 0]);
+                mat4.scale(m,m,[50,1,50]);
+                mat4.rotate(m,m,Math.PI/2,[1 , 0 , 0]);
+                floor.setMatrix(m);
+                scene.addSon(floor);
+                floor.setFather(scene);
+
+                var asl = new Object3D();
+                makeAssemblyLine(asl);
+                m = mat4.create();
+                mat4.identity(m);
+                asl.setMatrix(m);
+                scene.addSon(asl);
+                asl.setFather(scene);
+
+                var cake0 = new Object3D();
+                var dist = 5;//+(settings.time%10);
+                makeCake(cake0,0);
+                m = mat4.create();
+                mat4.identity(m);
+                mat4.translate(m,m,[dist,3+settings.diskH/2,0]);
+                mat4.scale(m,m,[0.5,0.5,0.5]);
+                cake0.setMatrix(m);
+                scene.addSon(cake0);
+                cake0.setFather(scene);
+
+                var cake1 = new Object3D();
+                dist = 10;//+(settings.time%10);
+                makeCake(cake1,1);
+                m = mat4.create();
+                mat4.identity(m);
+                mat4.translate(m,m,[dist,3+settings.diskH/2,0]);
+                mat4.scale(m,m,[0.5,0.5,0.5]);
+                cake1.setMatrix(m);
+                scene.addSon(cake1);
+                cake1.setFather(scene);
+
+            }
+
+// ------------- OBJETOS ESPECÍFICOS -----------------
+            function makeCakeBase(cakeBase)
+            {
+            // Se entiende que cake es un objeto3D vacío al cual lo vamos a hacer torta...
+            // Parámetros modificables: radio, altura, cantidad de ciclos y amplitud de onda (opt:suavidad, color)
+                var rad=settings.baseCakeR,h=settings.baseCakeH,nCycles=settings.baseCakeCycles,amplitude=settings.baseCakeAmplitude;
+                var smoothness_ang=80,smoothness_cur=25;
+                var curve;
+                var curvePoints = [];
+                var point = vec4.create();
+                var grid;
+
+                // Curva BSPline cuadrática del contorno de la torta
+                point = vec4.fromValues(0,0,0,1);
+                curvePoints.push(point);
+                curvePoints.push(point);
+                point = vec4.fromValues((rad-amplitude)/2,0,0,1);
+                curvePoints.push(point);
+                for (var i=0.0; i<(2*nCycles) ; i+=2)
+                {
+                    // Diferencio los casos del primero y el ultimo porque sino queda muy espaciado entre capas
+                    var hl,he;
+                    if (i!=0){
+                        hl = h*(i/(2*nCycles-1))-0.25*h/nCycles; 
+                    }else{
+                        hl = h*(i/(2*nCycles-1));
+                    }
+                    point = vec4.fromValues(rad-amplitude,hl,0,1);
+                    curvePoints.push(point);
+                    point = vec4.fromValues(rad,hl,0,1);
+                    curvePoints.push(point);
+                    if (h != h*((i+1)/(2*nCycles-1))){
+                        he = h*((i+1)/(2*nCycles-1))+0.25*h/nCycles; 
+                    }else{
+                        he = h;
+                    }
+                    point = vec4.fromValues(rad,he,0,1);
+                    curvePoints.push(point);
+                    point = vec4.fromValues(rad-amplitude,he,0,1);
+                    curvePoints.push(point);
+                }
+                point = vec4.fromValues((rad-amplitude)/2,h,0,1);
+                curvePoints.push(point);
+
+                /*
+                point = vec4.fromValues(rad-amplitude,0,0,1);
+                curvePoints.push(point);
+                //curvePoints.push(point);
+                for (var i=0.0; i<nCycles ; i++)
+                {
+                    point = vec4.fromValues(rad,h*(i/nCycles)+0.5*h/nCycles,0,1);
+                    curvePoints.push(point);
+                    point = vec4.fromValues(rad-amplitude,h*((i+1)/nCycles),0,1);
+                    curvePoints.push(point);
+                }
+                */
+                point = vec4.fromValues(0,h,0,1);
+                curvePoints.push(point);
+                curvePoints.push(point);
+                curve = new BsplineQuadratic();
+                curve.setControlPoints(curvePoints);
+
+                grid = new VertexGrid(4,4);
+                grid.createSurfaceRevolution(curve,smoothness_cur,smoothness_ang);
+                grid.createIndexBuffer();
+
+                cakeBase.setVertexGrid(grid);
+            }
+
+            function makeCream(cream)
+            {
+                // TODO HACER ESTO BIEN
+                // Se supone que cream es un objeto 3D
+                // Parámetro: vueltas de torsión, radio de la torta
+                var r=settings.creamR,nTurns=settings.creamTurns;
+                var smoothness_cur=5,smoothness_ang=6;
+                var curve;
+                var point;
+                var curvePoints = [];
+                var grid;
+                var R=settings.creamStarR;
+                var R2 = R*0.38196601;
+
+                // Estrella de cinco puntas
+                // Hay una relación entre el radio grande y el radio chico
+                point = vec4.create();
+                for(var i=0; i<5; i++){
+                    point = vec4.fromValues(R*Math.cos(i*2*Math.PI/5),R*Math.sin(i*2*Math.PI/5),0,1);
+                    curvePoints.push(point);
+                    point = vec4.fromValues(R2*Math.cos((i*2+1)*2*Math.PI/10),R2*Math.sin((i*2+1)*2*Math.PI/10),0,1);
+                    curvePoints.push(point);
+                }
+                point = vec4.fromValues(r,0,0,1);
+                curvePoints.push(point);
+                curve = new linearCurve();
+                curve.setControlPoints(curvePoints);
+
+                grid = new VertexGrid(4,4);
+
+                // Creo la directriz, que será un conjunto de matrices que darán la trayectoria y movimiento de la estrella
+                var m;
+                var ms = [];
+                for( var i=0 ; i < smoothness_ang ; i++){
+                    m = mat4.create();
+                    mat4.identity(m);
+                    mat4.translate(m, m, [3,0.0,0.0]);
+                    mat4.rotate(m,m,i*2*Math.PI/smoothness_ang,[0.0 , 1.0 , 0.0]);
+                    ms.push(m);
+                }
+                grid.channelSurface(curve,smoothness_cur,ms);
+                grid.createIndexBuffer();
+
+                cream.setVertexGrid(grid);
+
+            }
+            function makeBox (box)
+            {
+                var grid = new VertexGrid(4,5);
+                grid.createCilinderGrid(true);
+                grid.createIndexBuffer();
+                box.setVertexGrid(grid);
+            }
+            function makeCono (cono)
+            {
+                var smoothness_ang=100,smoothness_cur=100;
+                var curve;
+                var curvePoints = [];
+                var point = vec4.create();
+                var grid;
+
+                // Curva Bezier cubica
+                point = vec4.fromValues(0,0,0,1);
+                curvePoints.push(point);
+                point = vec4.fromValues(0.33,0.0,0,1);
+                curvePoints.push(point);
+                point = vec4.fromValues(0.5,0.0,0,1);
+                curvePoints.push(point);
+                point = vec4.fromValues(0.66,0.0,0,1);
+                curvePoints.push(point);
+                point = vec4.fromValues(0.7,0.3,0,1);
+                curvePoints.push(point);
+                point = vec4.fromValues(0.5,0.4,0,1);
+                curvePoints.push(point);
+                point = vec4.fromValues(0.45,0.5,0,1);
+                curvePoints.push(point);
+                point = vec4.fromValues(0.45,0.8,0,1);
+                curvePoints.push(point);
+                point = vec4.fromValues(0.40,1.2,0,1);
+                curvePoints.push(point);
+                point = vec4.fromValues(0.35,1.35,0,1);
+                curvePoints.push(point);
+                point = vec4.fromValues(0.1,1.65,0,1);
+                curvePoints.push(point);
+                point = vec4.fromValues(0.06,1.8,0,1);
+                curvePoints.push(point);
+                point = vec4.fromValues(0.003,2,0,1);
+                curvePoints.push(point);
+                point = vec4.fromValues(0,2.1,0,1);
+                curvePoints.push(point);
+
+                curve = new BezierCubic();
+                curve.setControlPoints(curvePoints);
+
+                grid = new VertexGrid(4,4);
+                grid.createSurfaceRevolution(curve,smoothness_cur,smoothness_ang);
+                grid.createIndexBuffer();
+
+                cono.setVertexGrid(grid);
+            }
+            function makeCherry (cherry)
+            {
+                var smoothness_ang=100,smoothness_cur=100;
+                var curve;
+                var curvePoints = [];
+                var point = vec4.create();
+                var grid;
+
+                point = vec4.fromValues(-0.5,0,0,1);
+                curvePoints.push(point);
+                point = vec4.fromValues(0.5,0.0,0,1);
+                curvePoints.push(point);
+                point = vec4.fromValues(0.5,1.0,0,1);
+                curvePoints.push(point);
+                point = vec4.fromValues(-0.5,1.0,0,1);
+                curvePoints.push(point);
+
+                curve = new BsplineQuadratic();
+                curve.setControlPoints(curvePoints);
+
+                grid = new VertexGrid(4,4);
+                grid.createSurfaceRevolution(curve,smoothness_cur,smoothness_ang);
+                grid.createIndexBuffer();
+
+                cherry.setVertexGrid(grid);
+            }
+            function makeFruitSlice (frSlice)
+            {
+                // TODO corregir esto
+                var smoothness_ang=100,smoothness_cur=10, maxRad=0.3*Math.PI;
+                var curve;
+                var curvePoints = [];
+                var point = vec4.create();
+                var grid;
+
+                point = vec4.fromValues(0.0,0.0,0.0,1);
+                curvePoints.push(point);
+                point = vec4.fromValues(0.9,0.5,0,1);
+                curvePoints.push(point);
+                point = vec4.fromValues(0.9,1,0,1);
+                curvePoints.push(point);
+                point = vec4.fromValues(0,1.5,0,1);
+                curvePoints.push(point);
+                point = vec4.fromValues(0,1.0,0,1);
+                curvePoints.push(point);
+                point = vec4.fromValues(0,0.5,0,1);
+                curvePoints.push(point);
+                point = vec4.fromValues(0.0,0.0,0.0,1);
+                curvePoints.push(point);
+
+                curve = new BezierCubic();
+                curve.setControlPoints(curvePoints);
+
+                grid = new VertexGrid(4,4);
+                var m0 = mat4.create();
+                mat4.identity(m0);
+                mat4.scale(m0,m0,[0.05 , 0.05 , 1]);
+                var m1 = mat4.create();
+                mat4.identity(m1);
+                mat4.scale(m1,m1,[1/0.05 , 1/0.05 , 1]);
+                var m2 = mat4.create();
+                mat4.identity(m2);
+                mat4.translate(m2,m2,[0,0,0.4]);
+                var m3 = mat4.create();
+                mat4.identity(m3);
+                mat4.translate(m3,m3,[0,0,0.4]);
+                mat4.scale(m3,m3,[0.05 , 0.05 , 1]);
+                // var ms = [m0 , m1 , m2 , m3];
+                var ms = [m0,m1 , m2,m3];
+
+                grid.channelSurface(curve,smoothness_cur,ms);
+                // grid.createSurfaceRevolution(curve,smoothness_cur,smoothness_ang,maxRad);
+                grid.createIndexBuffer();
+
+                frSlice.setVertexGrid(grid);
+            }
+            function makeTube(tube)
+            {
+                var smoothness_ang=100,smoothness_cur=100;
+                var curve;
+                var curvePoints = [];
+                var point = vec4.create();
+                var grid;
+
+                point = vec4.fromValues(0.0,0.0,0.0,1);
+                curvePoints.push(point);
+                point = vec4.fromValues(0.02,0.0,0.0,1);
+                curvePoints.push(point);
+                point = vec4.fromValues(0.05,0.0,0.0,1);
+                curvePoints.push(point);
+                point = vec4.fromValues(0.1,0.0,0.0,1);
+                curvePoints.push(point);
+                point = vec4.fromValues(0.1,0.2,0,1);
+                curvePoints.push(point);
+                point = vec4.fromValues(0.1,0.4,0,1);
+                curvePoints.push(point);
+                point = vec4.fromValues(0.1,0.8,0,1);
+                curvePoints.push(point);
+                point = vec4.fromValues(0.09,0.8,0,1);
+                curvePoints.push(point);
+                point = vec4.fromValues(0.08,0.8,0,1);
+                curvePoints.push(point);
+                point = vec4.fromValues(0.07,0.8,0,1);
+                curvePoints.push(point);
+                point = vec4.fromValues(0.07,0.78,0,1);
+                curvePoints.push(point);
+                point = vec4.fromValues(0.07,0.75,0,1);
+                curvePoints.push(point);
+                point = vec4.fromValues(0.07,0.71,0,1);
+                curvePoints.push(point);
+                point = vec4.fromValues(0.04,0.71,0,1);
+                curvePoints.push(point);
+                point = vec4.fromValues(0.02,0.71,0,1);
+                curvePoints.push(point);
+                point = vec4.fromValues(0.0,0.71,0,1);
+                curvePoints.push(point);
+
+                curve = new BezierCubic();
+                curve.setControlPoints(curvePoints);
+
+                grid = new VertexGrid(4,4);
+                grid.createSurfaceRevolution(curve,smoothness_cur,smoothness_ang);
+                grid.createIndexBuffer();
+
+                tube.setVertexGrid(grid);
+            }
+            function makeDisk (disk)
+            {
+                var r=settings.diskR,h=settings.diskH;
+                var smoothness_ang=100,smoothness_cur=100;
+                var curve;
+                var curvePoints = [];
+                var point = vec4.create();
+                var grid;
+
+                point = vec4.fromValues(0.0 , 0.0 , 0.0 , 1);
+                curvePoints.push(point);
+                curvePoints.push(point);
+                point = vec4.fromValues(r*0.9 , 0.0 , 0.0 , 1);
+                curvePoints.push(point);
+                point = vec4.fromValues(r , 0.0 , 0.0 , 1);
+                curvePoints.push(point);
+                point = vec4.fromValues(r , h , 0.0 , 1);
+                curvePoints.push(point);
+                point = vec4.fromValues(r*0.9 , h , 0.0 , 1);
+                curvePoints.push(point);
+                point = vec4.fromValues(0.0 , h , 0.0 , 1);
+                curvePoints.push(point);
+                curvePoints.push(point);
+
+                curve = new BsplineQuadratic();
+                curve.setControlPoints(curvePoints);
+                grid = new VertexGrid(4,4);
+                grid.createSurfaceRevolution(curve,smoothness_cur,smoothness_ang);
+                grid.createIndexBuffer();
+
+                disk.setVertexGrid(grid);
+            }
+            function makeCake (cake,number)
+            {
+                var hDisk = settings.diskH , hBase = settings.baseCakeH , rBase = settings.baseCakeR;
+
+                var numDeco= (number==0?settings.cakeNumDeco0:settings.cakeNumDeco1);
+                var numCont= (number==0?settings.cakeNumCont0:settings.cakeNumCont1);
+                var disk,base,objr;
+                var decoType= (number==0?settings.cakeDecoType0:settings.cakeDecoType1);
+                var contType= (number==0?settings.cakeContType0:settings.cakeContType1);
+
+
+                disk = new Object3D();
+                makeDisk(disk);
+                var md = mat4.create();
+                mat4.identity(md);
+                mat4.translate(md,md,[0.0 , -hDisk , 0.0]);
+                disk.setMatrix(md);
+                cake.addSon(disk);
+                disk.setFather(cake);
+
+                base = new Object3D();
+                makeCakeBase(base);
+                var mb = mat4.create();
+                mat4.identity(mb);
+                base.setMatrix(mb);
+                cake.addSon(base);
+                base.setFather(cake);
+
+                var distTrans = rBase*0.7; // Distancia del centro donde van las decoraciones
+                var distTrans2 = rBase*1.2; // DIstancia del centro donde 
+                for (var i=0 ; i<numDeco ; i++)
+                {
+                    var deco = new Object3D();
+                    var mde = mat4.create();
+                    if (decoType == 'cherry'){
+                        makeCherry(deco);
+                        mat4.identity(mde);
+                        mat4.rotate(mde,mde,i*2*Math.PI/numDeco,[0.0 , 1.0 , 0.0]);
+                        mat4.translate(mde,mde,[distTrans , hBase*0.91 , 0.0]);
+                        mat4.scale(mde,mde,[0.5,0.5,0.5]);
+                        deco.setMatrix(mde);
+                        cake.addSon(deco);
+                        deco.setFather(cake);
+                    }else if (decoType == 'cono'){
+                        makeCono(deco);
+                        mat4.identity(mde);
+                        mat4.rotate(mde,mde,i*2*Math.PI/numDeco,[0.0 , 1.0 , 0.0]);
+                        mat4.translate(mde,mde,[distTrans , hBase*0.98 , 0.0]);
+                        mat4.scale(mde,mde,[0.5,0.5,0.5]);
+                        deco.setMatrix(mde);
+                        cake.addSon(deco);
+                        deco.setFather(cake);
+                    }else if (decoType == 'fruit') {
+                        makeFruitSlice(deco);
+                        mat4.identity(mde);
+                        mat4.rotate(mde,mde,i*2*Math.PI/numDeco,[0.0 , 0.0 , 0.0]);
+                        mat4.translate(mde,mde,[distTrans , hBase*1.2 , 0.0]);
+                        mat4.scale(mde,mde,[0.5,0.5,0.5]);
+                        mat4.rotate(mde,mde,Math.PI/2,[1.0 , 0.0 , 0.0]);
+                        deco.setMatrix(mde);
+                        cake.addSon(deco);
+                        deco.setFather(cake);
+                    }
+                }
+                for (var i=0 ; i<numCont ; i++)
+                {
+                    var thingy = new Object3D();
+                    var mde = mat4.create();
+                    if (contType == 'tube'){
+                        makeTube(thingy);
+                        mat4.identity(mde);
+                        mat4.rotate(mde,mde,i*2*Math.PI/numCont,[0.0 , 1.0 , 0.0]);
+                        mat4.translate(mde,mde,[distTrans2 , 0.0, 0.0]);
+                        mat4.scale(mde,mde,[1,3,1]);
+                        thingy.setMatrix(mde);
+                        cake.addSon(thingy);
+                        thingy.setFather(cake);
+                    }else if (contType == 'boxy'){
+                        makeBox(thingy);
+                        mat4.identity(mde);
+                        mat4.rotate(mde,mde,i*2*Math.PI/numCont,[0.0 , 1.0 , 0.0]);
+                        mat4.translate(mde,mde,[distTrans2 , 0.0, 0.0]);
+                        mat4.scale(mde,mde,[0.1,2.5,0.1]);
+                        thingy.setMatrix(mde);
+                        cake.addSon(thingy);
+                        thingy.setFather(cake);
+                    }
+                }
+            }
+            function makeFloor(floor)
+            {
+                var grid = new VertexGrid(2,2);
+                grid.createUniformPlaneGrid();
+                grid.createIndexBuffer();
+                floor.setVertexGrid(grid);
+            }
+            function makeDispenser(dispen)
+            {
+                makeBox(dispen);
+                var m = mat4.create();
+                mat4.scale(m,m,[4 , 5 , 3]);
+                dispen.setMatrix(m);
+            }
+            function makeAssemblyLine(asl)
+            {
+                var m = mat4.create();
+                mat4.identity(m);
+
+                var disp = new Object3D();
+                makeBox(disp);
+                mat4.translate(m,m,[-2 , 0 , 0]);
+                mat4.rotate(m,m,Math.PI/2,[0,1,0]);
+                mat4.scale(m,m,[4,8,3]);
+                mat4.rotate(m,m,Math.PI/4,[0,1,0]);
+                disp.setMatrix(m);
+                asl.addSon(disp);
+                disp.setFather(asl);
+
+                var line2 = new Object3D();
+                m = mat4.create();
+                makeLine(line2);
+                mat4.identity(m);
+                mat4.rotate(m,m,Math.PI/2,[0,1,0]);
+                //mat4.scale(m,m,[4,5,3]);
+                line2.setMatrix(m);
+                asl.addSon(line2);
+                line2.setFather(asl);
+
+            }
+            function makeLine(line)
+            {
+                var nSupports = 3;
+
+                var horLine = new Object3D();
+                makeBox(horLine);
+                var m = mat4.create();
+                mat4.identity(m);
+                mat4.translate(m,m,[0 , 2 , 10.5]);
+                mat4.rotate(m,m,Math.PI/2,[0,1,0]);
+                mat4.scale(m,m,[15,1,3]);
+                mat4.rotate(m,m,Math.PI/4,[0,1,0]);
+                horLine.setMatrix(m);
+                line.addSon(horLine);
+                horLine.setFather(line);
+
+                for (var i =0.0 ; i<nSupports ; i++){
+                    var supp = new Object3D();
+                    m = mat4.create();
+                    makeBox(supp);
+                    mat4.identity(m);
+                    mat4.translate(m,m,[0, 0,17* (i+0.5)/nSupports]);
+                    mat4.rotate(m,m,Math.PI/4,[0,1,0]);
+                    mat4.scale(m,m,[0.3,2,0.3]);
+                    supp.setMatrix(m);
+                    line.addSon(supp);
+                    supp.setFather(line);
+                }
+            }
+
+
+            
+            
+
+
+        </script>
+
+    <body onload="initWebGL()">
+		<center>
+			<h1>Sistemas Gráficos - 66.71</h1>
+			<h2>Geloso Federico</h2>
+			<h2>TP</h2>
+			<canvas id="my-canvas" width="900" height="500">
+			Your browser does not support the HTML5 canvas element.
+			</scanvas>
+			
+		</center>
+    </body>
+</html>
+
