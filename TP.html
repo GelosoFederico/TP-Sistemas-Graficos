@@ -61,6 +61,7 @@
             var thing4 = null;
             var test_curva = null;
             var keyboard = new keyboardController();
+            var mouse = new mouseController();
 
 //GUI();
 
@@ -99,10 +100,21 @@
                 this.cakeDecoType1 = 'cherry';
                 this.cakeContType1 = 'boxy';
 
+                this.cake0Distance = 6
+                this.cake1Distance = 14
+
                 this.cakeSmoothnessC = 40;
                 this.cakeSmoothnessAng = 20;
 
-                this.cameraType = 2;
+                this.cameraType = 1;
+                this.cameraLastPosX = 1;
+                this.cameraLastPosY = 1;
+                this.sensitivityX = 500;
+                this.sensitivityY = 500;
+                this.sensitivityZoom = 50;
+                this.cameraLastZoom = 1;
+
+                this.random_color = false; // Debugging
             }
             function GUI()
             {
@@ -127,12 +139,87 @@
                 var f4=gui.addFolder('Definicion / smoothness');
                 f4.add(settings, 'cakeSmoothnessC', 1.0, 500.0).name("cantidad puntos curvas").step(1.0).onChange(function() { setupBuffers();});
                 f4.add(settings, 'cakeSmoothnessAng', 1.0, 500.0).name("cantidad puntos en angulo").step(1.0).onChange(function() { setupBuffers();});
+                var f5=gui.addFolder('Debugging');
+                f5.add(settings, 'random_color').name("Color grading").onChange(function() { setupBuffers();});
                 f1.open();
 
 
             }
 
 // --------------------- MANEJO DE TECLADO Y MOUSE ---------------
+
+window.onmousedown = mouse.onMouseDown;
+window.onmousemove = mouse.onMouseMove;
+window.onmouseup = mouse.onMouseUp;
+            function mouseController()
+            {
+                var me = this;
+                this.buttonPressed = false;
+                this.startingX = 0;
+                this.startingY = 0;
+                this.deltaX = 0;
+                this.deltaY = 0;
+                this.wheel = 0;
+
+                this.onMouseDown = function(event)
+                {
+
+                    event = event||window.event;
+                    var button = event.which || event.button;
+                    if(button == 1){
+                        me.buttonPressed = true;
+                        me.startingX = event.clientX;
+                        me.startingY = event.clientY;
+                    }
+                }
+                this.onMouseUp = function(event)
+                {
+                    event = event||window.event;
+                    var button = event.which || event.button;
+                    if(button == 1){
+                        me.buttonPressed = false;
+                        me.deltaX = 0;
+                        me.deltaY = 0;
+                    }
+                }
+                this.onMouseMove = function(event)
+                {
+                    if(me.buttonPressed == true){
+                        me.deltaX = me.startingX -event.clientX;
+                        me.deltaY = me.startingY -event.clientY;
+                        me.startingX = event.clientX;
+                        me.startingY = event.clientY;
+                    }
+                }
+                this.onMouseWheel = function(event) 
+                {
+                    if (!event) /* For IE. */
+                        event = window.event;
+                    if (event.wheelDelta) { /* IE/Opera. */
+                        me.wheel = event.wheelDelta/120;
+                    } else if (event.detail) { 
+                        //Mozilla
+                        me.wheel = -event.detail/3;
+                    }
+                    settings.cameraLastZoom +=me.wheel/settings.sensitivityZoom;
+                    /** Prevent default actions caused by mouse wheel.
+                     * That might be ugly, but we handle scrolls somehow
+                     * anyway, so don't bother here..
+                     */
+                    if (event.preventDefault)
+                        event.preventDefault();
+                    
+                    event.returnValue = false;
+                    // Esto está sacado de un post de stackOverflow
+                }
+            }
+if (window.addEventListener){
+    //Mozilla
+    window.addEventListener('DOMMouseScroll', mouse.onMouseWheel, false);
+}
+// IE/Opera
+window.onmousewheel = document.onmousewheel = mouse.onMouseWheel;
+
 window.addEventListener("keypress", function(event) {keyboard.handleKeyPress(event);}, false);
 
             function keyboardController() 
@@ -151,6 +238,8 @@ window.addEventListener("keypress", function(event) {keyboard.handleKeyPress(eve
                         case '4':
                         case '5':
                             settings.cameraType = parseInt(this.pressedKeys);
+                            settings.cameraLastPosX = 1;
+                            settings.cameraLastPosY = 1;
                             break;
                         default:
                             // console.log("Don't understand pressed key");
@@ -500,7 +589,7 @@ window.addEventListener("keypress", function(event) {keyboard.handleKeyPress(eve
                 // El plano se genera centrado en el origen.
                 // El propósito de esta función es a modo de ejemplo de como inicializar y cargar
                 // los buffers de las posiciones y el color para cada vértice.
-                this.createUniformPlaneGrid = function(){
+                this.createUniformPlaneGrid = function(color){
 
                     this.position_buffer = [];
                     this.color_buffer = [];
@@ -515,9 +604,16 @@ window.addEventListener("keypress", function(event) {keyboard.handleKeyPress(eve
                            this.position_buffer.push(0);
 
                            // Para cada vértice definimos su color
-                           this.color_buffer.push(1.0/this.rows * i);
-                           this.color_buffer.push(0.2);
-                           this.color_buffer.push(1.0/this.cols * j);
+                           if(color == null || settings.random_color==true){
+                                this.color_buffer.push(1.0/this.rows * i);
+                                this.color_buffer.push(0.2);
+                                this.color_buffer.push(1.0/this.cols * j);
+                           }else{
+                                this.color_buffer.push(color[0]);
+                                this.color_buffer.push(color[1]);
+                                this.color_buffer.push(color[2]);
+                           }
+
                                                   
                        };
                     };
@@ -555,7 +651,7 @@ window.addEventListener("keypress", function(event) {keyboard.handleKeyPress(eve
                                this.position_buffer.push(Math.sin(j*2*Math.PI/(this.cols-1)));
                            }
                            // Para cada vértice definimos su color
-                           if(color== null || (color.length !=1 && color.length != 3) ){
+                           if(color== null || (color.length !=1 && color.length != 3) || settings.random_color==true ){
                                this.color_buffer.push(1.0/this.rows * i);
                                this.color_buffer.push(0.2);
                                this.color_buffer.push(1.0/this.cols * j);
@@ -571,7 +667,7 @@ window.addEventListener("keypress", function(event) {keyboard.handleKeyPress(eve
                        };
                     };
                 }
-                this.createSurfaceRevolution = function(curve,n,c,maxDeg){
+                this.createSurfaceRevolution = function(curve,n,c,color,maxDeg){
                     // n: cantidad de puntos en la curva.
                     // c: cantidad de angulos
                     // maxDeg: Si está definido es hasta qué angulo gira
@@ -594,21 +690,41 @@ window.addEventListener("keypress", function(event) {keyboard.handleKeyPress(eve
                         this.position_buffer = this.position_buffer.concat(points);
                     }
                     this.cols = Math.round(points.length/3);
+
                     // Color buffer, puesto de tal manera que se pueda identificar el sombreado
-                    this.color_buffer = this.position_buffer.slice();
-                    var ma = this.color_buffer[0];
-                    for (var i=0 ; i<this.color_buffer.length ; i++){
-                        if (this.color_buffer[i] > ma){
-                            ma = this.color_buffer[i];
+                    if(color == null || settings.random_color==true)
+                    {
+                        this.color_buffer = this.position_buffer.slice();
+                        var ma = this.color_buffer[0];
+                        for (var i=0 ; i<this.color_buffer.length ; i++){
+                            if (this.color_buffer[i] > ma){
+                                ma = this.color_buffer[i];
+                            }
+                        }
+                        for(var i=0 ; i<this.color_buffer.length ; i++){
+                            this.color_buffer[i] /= ma;
                         }
                     }
-                    for(var i=0 ; i<this.color_buffer.length ; i++){
-                        this.color_buffer[i] /= ma;
+                    else if(color.length == 1)
+                    {
+                        this.color_buffer = this.position_buffer.slice();
+                        for (var i=0 ; i<this.color_buffer.length ; i++){
+                            this.color_buffer[i] = color;
+                        }
+                    }
+                    else
+                    {
+                        this.color_buffer = this.position_buffer.slice();
+                        for (var i=0 ; i<this.color_buffer.length/3 ; i++){
+                            this.color_buffer[i*3] = color[0];
+                            this.color_buffer[i*3+1] = color[1];
+                            this.color_buffer[i*3+2] = color[2];
+                        }
                     }
                 }
 
 
-                this.channelSurface = function(curve,n,directrix){
+                this.channelSurface = function(curve,n,directrix,color){
                     // Se harán niveles en cada punto de la directriz, las cuales son matrices que irán transformando los puntos de control
                     // curve es la curva a partir de la cual salen los puntos, y n es la cantida de puntos.
 
@@ -626,14 +742,22 @@ window.addEventListener("keypress", function(event) {keyboard.handleKeyPress(eve
 
                     this.color_buffer = this.position_buffer.slice();
                     var ma = this.color_buffer[0];
-                    for (var i=0 ; i<this.color_buffer.length ; i++){
-                        if (this.color_buffer[i] > ma){
-                            ma = this.color_buffer[i];
+                    if ( color.length == 3 && settings.random_color == false)
+                    {
+                        for (var i=0 ; i<this.color_buffer.length/3 ; i++){
+                            this.color_buffer[i*3] = color[0];
+                            this.color_buffer[i*3+1] = color[1];
+                            this.color_buffer[i*3+2] = color[2];
                         }
-                    }
-                    for(var i=0 ; i<this.color_buffer.length ; i++){
-                        this.color_buffer[i] /= ma;
-
+                    }else{
+                        for (var i=0 ; i<this.color_buffer.length ; i++){
+                            if (this.color_buffer[i] > ma){
+                                ma = this.color_buffer[i];
+                            }
+                        }
+                        for(var i=0 ; i<this.color_buffer.length ; i++){
+                            this.color_buffer[i] /= ma;
+                        }
                     }
                 }
 
@@ -777,7 +901,7 @@ window.addEventListener("keypress", function(event) {keyboard.handleKeyPress(eve
             function setupWebGL()
             {
                 //set the clear color
-                gl.clearColor(0.1, 0.1, 0.2, 1.0);     
+                gl.clearColor(1.0, 1.0, 1.0, 1.0);     
                 gl.enable(gl.DEPTH_TEST);                              
                 gl.depthFunc(gl.LEQUAL); 
                 gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);
@@ -883,23 +1007,32 @@ window.addEventListener("keypress", function(event) {keyboard.handleKeyPress(eve
                 var u_proj_matrix = gl.getUniformLocation(glProgram, "projMatrix");
                 var u_view_matrix = gl.getUniformLocation(glProgram, "viewMatrix");
 
+                var movX = (settings.cameraLastPosX + mouse.deltaX)/settings.sensitivityX;
+                var movY = (settings.cameraLastPosY + mouse.deltaY)/settings.sensitivityY;
+                settings.cameraLastPosX = movX*settings.sensitivityX;
+                settings.cameraLastPosY = movY*settings.sensitivityY;
+                var zoom = settings.cameraLastZoom; // + mouse.wheel/1000;
+                // settings.cameraLastZoom = zoom;
                 switch(settings.cameraType)
                 {
                     case 0: // Camara general
+                        mat4.identity(mvMatrix);
+                        mat4.lookAt(mvMatrix, [Math.sin(movY)*Math.cos(movX) *32*zoom +5 , 32*Math.cos(movY) *zoom , -Math.sin(movY)*Math.sin(movX)*32*zoom] , [5 , 3 , 0] , [0,1,0]);
+                        mat4.perspective(pMatrix, 45, 640.0/480.0, 0.1, 100.0);
                         break;
                     case 1: // Orbital con centro en escena
                         mat4.identity(mvMatrix);
-                        mat4.lookAt(mvMatrix, [25 , 10 , 17.5] , [5 , 3 , 0] , [0,1,0]);
+                        mat4.lookAt(mvMatrix, [Math.sin(movY)*Math.cos(movX) *32*zoom +5 , 32*Math.cos(movY) *zoom , -Math.sin(movY)*Math.sin(movX)*32*zoom] , [5 , 3 , 0] , [0,1,0]);
                         mat4.perspective(pMatrix, 45, 640.0/480.0, 0.1, 100.0);
                         break;
                     case 2: // Orbital con centro en torta 1
                         mat4.identity(mvMatrix);
-                        mat4.lookAt(mvMatrix, [15.5 , 12 , 1.5] , [5 , 3 , 0] , [0,1,0]);
+                        mat4.lookAt(mvMatrix, [Math.sin(movY)*Math.cos(movX) *8*zoom +5 , 8*Math.cos(movY) *zoom , -Math.sin(movY)*Math.sin(movX)*8*zoom] , [5 , 3 , 0] , [0,1,0]);
                         mat4.perspective(pMatrix, 45, 640.0/480.0, 0.1, 100.0);
                         break;
                     case 3: // Orbital con centro en torta 2
                         mat4.identity(mvMatrix);
-                        mat4.lookAt(mvMatrix, [10 , 40 , 0] , [9 , 0 , 0] , [0,1,0]);
+                        mat4.lookAt(mvMatrix, [Math.sin(movY)*Math.cos(movX) *8*zoom +5 , 8*Math.cos(movY) *zoom , -Math.sin(movY)*Math.sin(movX)*8*zoom] , [5 , 3 , 0] , [0,1,0]);
                         mat4.perspective(pMatrix, 45, 640.0/480.0, 0.1, 100.0);
                         break;
                     case 4: // Ortográfica lateral
@@ -957,6 +1090,7 @@ window.addEventListener("keypress", function(event) {keyboard.handleKeyPress(eve
             {
                 // TODO animación
                 // Esto es para la animación
+                /*
                 var dist = 5+(settings.time%10);
                 var m = mat4.create();
                 mat4.identity(m);
@@ -964,6 +1098,7 @@ window.addEventListener("keypress", function(event) {keyboard.handleKeyPress(eve
                 mat4.rotate(m,m,settings.time*0.05,[0,1,0]);
                 // mat4.scale(m,m,[0.5,0.5,0.5]);
                 sceneGlobal.children_[2].setMatrix(m);
+                */
                 settings.time = settings.time + settings.timeJump;
             }
 
@@ -991,7 +1126,7 @@ window.addEventListener("keypress", function(event) {keyboard.handleKeyPress(eve
                 asl.setFather(scene);
 
                 var cake0 = new Object3D();
-                var dist = 5;//+(settings.time%10);
+                var dist = settings.cake0Distance;//+(settings.time%10);
                 makeCake(cake0,0);
                 m = mat4.create();
                 mat4.identity(m);
@@ -1002,7 +1137,7 @@ window.addEventListener("keypress", function(event) {keyboard.handleKeyPress(eve
                 cake0.setFather(scene);
 
                 var cake1 = new Object3D();
-                dist = 10;//+(settings.time%10);
+                dist = settings.cake1Distance;//+(settings.time%10);
                 makeCake(cake1,1);
                 m = mat4.create();
                 mat4.identity(m);
@@ -1077,7 +1212,8 @@ window.addEventListener("keypress", function(event) {keyboard.handleKeyPress(eve
                 curve.setControlPoints(curvePoints);
 
                 grid = new VertexGrid(4,4);
-                grid.createSurfaceRevolution(curve,smoothness_cur,smoothness_ang);
+                var color = [0.83 , 0.77 , 0.33 ];
+                grid.createSurfaceRevolution(curve,smoothness_cur,smoothness_ang,color);
                 grid.createIndexBuffer();
 
                 cakeBase.setVertexGrid(grid);
@@ -1124,16 +1260,17 @@ window.addEventListener("keypress", function(event) {keyboard.handleKeyPress(eve
                     mat4.rotate(m,m,i*2*nTurns*Math.PI/(smoothness_ang-1),[0.0 , 0.0 , 1.0]);
                     ms.push(m);
                 }
-                grid.channelSurface(curve,smoothness_cur,ms);
+                var color = [0.85 , 0.95 , 0.95];
+                grid.channelSurface(curve,smoothness_cur,ms,color);
                 grid.createIndexBuffer();
 
                 cream.setVertexGrid(grid);
 
             }
-            function makeBox (box)
+            function makeBox (box,color)
             {
                 var grid = new VertexGrid(4,5);
-                grid.createCilinderGrid(true);
+                grid.createCilinderGrid(true,color);
                 grid.createIndexBuffer();
                 box.setVertexGrid(grid);
             }
@@ -1179,7 +1316,8 @@ window.addEventListener("keypress", function(event) {keyboard.handleKeyPress(eve
                 curve.setControlPoints(curvePoints);
 
                 grid = new VertexGrid(4,4);
-                grid.createSurfaceRevolution(curve,smoothness_cur,smoothness_ang);
+                var color = [0.26 , 0.26 , 0.75];
+                grid.createSurfaceRevolution(curve,smoothness_cur,smoothness_ang,color);
                 grid.createIndexBuffer();
 
                 cono.setVertexGrid(grid);
@@ -1205,7 +1343,8 @@ window.addEventListener("keypress", function(event) {keyboard.handleKeyPress(eve
                 curve.setControlPoints(curvePoints);
 
                 grid = new VertexGrid(4,4);
-                grid.createSurfaceRevolution(curve,smoothness_cur,smoothness_ang);
+                var color = [0.745 , 0.216 , 0.2];
+                grid.createSurfaceRevolution(curve,smoothness_cur,smoothness_ang,color);
                 grid.createIndexBuffer();
 
                 cherry.setVertexGrid(grid);
@@ -1255,7 +1394,8 @@ window.addEventListener("keypress", function(event) {keyboard.handleKeyPress(eve
                 // var ms = [m0 , m1 , m2 , m3];
                 var ms = [m0,m1 , m2,m3];
 
-                grid.channelSurface(curve,smoothness_cur,ms);
+                var color = [0.1 , 0.8 , 0.6];
+                grid.channelSurface(curve,smoothness_cur,ms,color);
                 // grid.createSurfaceRevolution(curve,smoothness_cur,smoothness_ang,maxRad);
                 grid.createIndexBuffer();
 
@@ -1306,7 +1446,8 @@ window.addEventListener("keypress", function(event) {keyboard.handleKeyPress(eve
                 curve.setControlPoints(curvePoints);
 
                 grid = new VertexGrid(4,4);
-                grid.createSurfaceRevolution(curve,smoothness_cur,smoothness_ang);
+                var color = [0.9 , 0.1 , 0.1];
+                grid.createSurfaceRevolution(curve,smoothness_cur,smoothness_ang,color);
                 grid.createIndexBuffer();
 
                 tube.setVertexGrid(grid);
@@ -1337,8 +1478,10 @@ window.addEventListener("keypress", function(event) {keyboard.handleKeyPress(eve
 
                 curve = new BsplineQuadratic();
                 curve.setControlPoints(curvePoints);
+
                 grid = new VertexGrid(4,4);
-                grid.createSurfaceRevolution(curve,smoothness_cur,smoothness_ang);
+                var color = [0.9 , 1.0 , 0.87];
+                grid.createSurfaceRevolution(curve,smoothness_cur,smoothness_ang,color);
                 grid.createIndexBuffer();
 
                 disk.setVertexGrid(grid);
@@ -1382,7 +1525,7 @@ window.addEventListener("keypress", function(event) {keyboard.handleKeyPress(eve
                         mat4.identity(mde);
                         mat4.rotate(mde,mde,i*2*Math.PI/numDeco,[0.0 , 1.0 , 0.0]);
                         mat4.translate(mde,mde,[distTrans , hBase*0.91 , 0.0]);
-                        mat4.scale(mde,mde,[0.5,0.5,0.5]);
+                        mat4.scale(mde,mde,[0.3,0.3,0.3]);
                         deco.setMatrix(mde);
                         cake.addSon(deco);
                         deco.setFather(cake);
@@ -1390,8 +1533,8 @@ window.addEventListener("keypress", function(event) {keyboard.handleKeyPress(eve
                         makeCono(deco);
                         mat4.identity(mde);
                         mat4.rotate(mde,mde,i*2*Math.PI/numDeco,[0.0 , 1.0 , 0.0]);
-                        mat4.translate(mde,mde,[distTrans , hBase*0.98 , 0.0]);
-                        mat4.scale(mde,mde,[0.5,0.5,0.5]);
+                        mat4.translate(mde,mde,[distTrans*0.9 , hBase*0.98 , 0.0]);
+                        mat4.scale(mde,mde,[0.35,0.35,0.35]);
                         deco.setMatrix(mde);
                         cake.addSon(deco);
                         deco.setFather(cake);
@@ -1422,7 +1565,8 @@ window.addEventListener("keypress", function(event) {keyboard.handleKeyPress(eve
                         cake.addSon(thingy);
                         thingy.setFather(cake);
                     }else if (contType == 'boxy'){
-                        makeBox(thingy);
+                        var colorBox = [0.8 , 0.2 , 0.7 ];
+                        makeBox(thingy,colorBox);
                         mat4.identity(mde);
                         mat4.rotate(mde,mde,i*2*Math.PI/numCont,[0.0 , 1.0 , 0.0]);
                         mat4.translate(mde,mde,[distTrans2 , 0.0, 0.0]);
@@ -1445,13 +1589,15 @@ window.addEventListener("keypress", function(event) {keyboard.handleKeyPress(eve
             function makeFloor(floor)
             {
                 var grid = new VertexGrid(2,2);
-                grid.createUniformPlaneGrid();
+                var color = [0.7 , 0.7 , 0.7];
+                grid.createUniformPlaneGrid(color);
                 grid.createIndexBuffer();
                 floor.setVertexGrid(grid);
             }
             function makeDispenser(dispen)
             {
-                makeBox(dispen);
+                var color = [0.1 , 0.2 , 0.8];
+                makeBox(dispen,color);
                 var m = mat4.create();
                 mat4.scale(m,m,[4 , 5 , 3]);
                 dispen.setMatrix(m);
@@ -1462,7 +1608,8 @@ window.addEventListener("keypress", function(event) {keyboard.handleKeyPress(eve
                 mat4.identity(m);
 
                 var disp = new Object3D();
-                makeBox(disp);
+                var colorDisp = [0.1 , 0.2 , 0.8];
+                makeBox(disp,colorDisp);
                 mat4.translate(m,m,[-2 , 0 , 0]);
                 mat4.rotate(m,m,Math.PI/2,[0,1,0]);
                 mat4.scale(m,m,[4,8,3]);
@@ -1481,13 +1628,38 @@ window.addEventListener("keypress", function(event) {keyboard.handleKeyPress(eve
                 asl.addSon(line2);
                 line2.setFather(asl);
 
+                var robotOne = new Object3D();
+                m = mat4.create();
+                makeRobotOne(robotOne);
+                mat4.identity(m);
+                //mat4.rotate(m,m,Math.PI/2,[0,1,0]);
+                //mat4.scale(m,m,[4,5,3]);
+                mat4.translate(m,m,[6,0,5]);
+                mat4.rotate(m,m,-Math.PI/2,[0,1,0]);
+                robotOne.setMatrix(m);
+                asl.addSon(robotOne);
+                robotOne.setFather(asl);
+
+                var robotTwo = new Object3D();
+                m = mat4.create();
+                makeRobotTwo(robotTwo);
+                mat4.identity(m);
+                //mat4.rotate(m,m,Math.PI/2,[0,1,0]);
+                //mat4.scale(m,m,[4,5,3]);
+                mat4.translate(m,m,[14,0,3]);
+                mat4.rotate(m,m,Math.PI/2,[0,1,0]);
+                robotTwo.setMatrix(m);
+                asl.addSon(robotTwo);
+                robotTwo.setFather(asl);
+
             }
             function makeLine(line)
             {
-                var nSupports = 3;
+                var nSupports = 10;
 
                 var horLine = new Object3D();
-                makeBox(horLine);
+                var colorHor = [0.3 , 0.3 , 0.3];
+                makeBox(horLine,colorHor);
                 var m = mat4.create();
                 mat4.identity(m);
                 mat4.translate(m,m,[0 , 2 , 10.5]);
@@ -1498,12 +1670,13 @@ window.addEventListener("keypress", function(event) {keyboard.handleKeyPress(eve
                 line.addSon(horLine);
                 horLine.setFather(line);
 
+                var colorVer = [0.3 , 0.7 , 0.3];
                 for (var i =0.0 ; i<nSupports ; i++){
                     var supp = new Object3D();
                     m = mat4.create();
-                    makeBox(supp);
+                    makeBox(supp,colorVer);
                     mat4.identity(m);
-                    mat4.translate(m,m,[0, 0,17* (i+0.5)/nSupports]);
+                    mat4.translate(m,m,[0, 0,21* (i+0.5)/nSupports]);
                     mat4.rotate(m,m,Math.PI/4,[0,1,0]);
                     mat4.scale(m,m,[0.3,2,0.3]);
                     supp.setMatrix(m);
@@ -1511,6 +1684,178 @@ window.addEventListener("keypress", function(event) {keyboard.handleKeyPress(eve
                     supp.setFather(line);
                 }
             }
+            function makeRobotOne (robot)
+            {
+                var distance_arm = -5;
+
+                var m = mat4.create();
+                var box1 = new Object3D();
+                var colorBox1 = [0.7 , 0.4 , 0.8];
+                makeBox(box1,colorBox1);
+                mat4.identity(m);
+                mat4.scale(m,m,[0.5,9,1]);
+                mat4.translate(m, m,[1,0,0]);
+                mat4.rotate(m,m,Math.PI/4,[0,1,0]);
+                box1.setMatrix(m);
+                robot.addSon(box1);
+                box1.setFather(robot);
+
+                var box2 = new Object3D();
+                var colorBox2 = [0.9 , 0.5 , 0.8];
+                makeBox(box2,colorBox2);
+                m = mat4.create();
+                mat4.identity(m);
+                mat4.scale(m,m,[0.7,6.5,0.7]);
+                mat4.rotate(m,m,Math.PI/4,[0,1,0]);
+                mat4.translate(m, m,[0,0,0]);
+                box2.setMatrix(m);
+                robot.addSon(box2);
+                box2.setFather(robot);
+
+                var box3 = new Object3D();
+                var colorBox3 = [0.8 , 0.6 , 0.45];
+                makeBox(box3,colorBox3);
+                m = mat4.create();
+                mat4.identity(m);
+                mat4.translate(m, m,[0.5,8,0]);
+                //mat4.rotate(m,m,Math.PI/2,[0 , 1 , 0]);
+                mat4.rotate(m,m,Math.PI/2,[0 , 0 , 1]);
+                mat4.scale(m,m,[0.2,6.5,0.5]);
+                mat4.rotate(m,m,Math.PI/4,[0,1,0]);
+                box3.setMatrix(m);
+                robot.addSon(box3);
+                box3.setFather(robot);
+
+                var arm = new Object3D();
+                makeArm(arm);
+                m = mat4.create();
+                mat4.identity(m);
+                mat4.translate(m, m,[distance_arm,8,0]);
+                mat4.rotate(m,m,Math.PI,[1 , 0 , 0]);
+                // mat4.scale(m,m,[0.5,6.5,0.2]);
+                // mat4.rotate(m,m,Math.PI/4,[0,1,0]);
+                arm.setMatrix(m);
+                robot.addSon(arm);
+                arm.setFather(robot);
+
+
+            }
+            function makeArm(arm)
+            {
+                var h = 5;
+                var h_arm = 1.0
+                var h_total = h_arm*h;
+                var smoothness_ang = 10;
+
+                var cilinder = new Object3D();
+                var m = mat4.create();
+                
+                var color1 = [0.8 , 0.8 , 0.95];
+                grid = new VertexGrid(h,smoothness_ang);
+                grid.createCilinderGrid(true,color1);
+                grid.createIndexBuffer();
+                cilinder.setVertexGrid(grid);
+                mat4.identity(m);
+                mat4.scale(m,m,[0.2 , 1*h_arm , 0.2]);
+                cilinder.setMatrix(m);
+                arm.addSon(cilinder);
+                cilinder.setFather(arm);
+
+                var wrist = new Object3D();
+                color1 = [0.5 , 0.5 , 0.95];
+                makeBox(wrist,color1);
+                m = mat4.create();
+                mat4.identity(m);
+                mat4.translate(m,m,[0,h_total-3*h_arm,0]);
+                mat4.scale(m,m,[0.8,0.15,0.4]);
+                mat4.rotate(m,m,Math.PI/4 , [0,1,0]);
+                wrist.setMatrix(m);
+                arm.addSon(wrist);
+                wrist.setFather(arm);
+
+                var hand = new Object3D();
+                makeHand(hand);
+                m = mat4.create();
+                mat4.identity(m);
+                mat4.translate(m,m,[0,h_total-3*h_arm+0.5,0]);
+                //mat4.scale(m,m,[1,0.05,0.3]);
+                hand.setMatrix(m);
+                arm.addSon(hand);
+                hand.setFather(arm);
+            }
+            function makeHand(hand)
+            {
+                var distance_open = 0.6;
+
+                var half_up = new Object3D();
+                var color1 = [0.8 , 0.8 , 0.95];
+                makeBox(half_up,color1);
+                var m = mat4.create();
+                mat4.identity(m);
+                mat4.translate(m,m,[distance_open/2,0,0]);
+                mat4.rotate(m,m,Math.PI/2,[0 , 0 , 1]);
+                mat4.scale(m,m,[0.6,0.05,0.3]);
+                mat4.rotate(m,m,Math.PI/4,[0 , 1 , 0]);
+                half_up.setMatrix(m);
+                hand.addSon(half_up);
+                half_up.setFather(hand);
+
+                var half_down = new Object3D();
+                makeBox(half_down,color1);
+                var m = mat4.create();
+                mat4.identity(m);
+                mat4.translate(m,m,[-distance_open/2,0,0]);
+                mat4.rotate(m,m,Math.PI/2,[0 , 0 , 1]);
+                mat4.scale(m,m,[0.6,0.05,0.3]);
+                mat4.rotate(m,m,Math.PI/4,[0 , 1 , 0]);
+                half_down.setMatrix(m);
+                hand.addSon(half_down);
+                half_down.setFather(hand);
+
+            }
+            function makeRobotTwo (robot)
+            {
+                var m = mat4.create();
+                var box1 = new Object3D();
+                var colorBox1 = [0.7 , 0.4 , 0.8];
+                makeBox(box1,colorBox1);
+                mat4.identity(m);
+                mat4.scale(m,m,[0.5,6,1]);
+                mat4.translate(m, m,[0,0,0]);
+                mat4.rotate(m,m,Math.PI/4,[0,1,0]);
+                box1.setMatrix(m);
+                robot.addSon(box1);
+                box1.setFather(robot);
+
+                var distance_arm = 1.1;
+
+                m = mat4.create();
+                var box2 = new Object3D();
+                var colorBox2 = [0.8 , 0.6 , 0.45];
+                makeBox(box2,colorBox2);
+                mat4.identity(m);
+                mat4.translate(m, m,[distance_arm,4,0]);
+                mat4.rotate(m,m,Math.PI/2,[1,0,0]);
+                mat4.rotate(m,m,Math.PI/2,[0,0,1]);
+                mat4.scale(m,m,[0.05,distance_arm,1]);
+                mat4.rotate(m,m,Math.PI/4,[0,1,0]);
+                box2.setMatrix(m);
+                robot.addSon(box2);
+                box2.setFather(robot);
+
+                m = mat4.create();
+                var box3 = new Object3D();
+                makeBox(box3,colorBox2);
+                mat4.identity(m);
+                mat4.translate(m, m,[distance_arm,3,0]);
+                mat4.scale(m,m,[0.2,1.7,0.2]);
+                mat4.rotate(m,m,Math.PI/4,[0,1,0]);
+                box3.setMatrix(m);
+                robot.addSon(box3);
+                box3.setFather(robot);
+
+            }
+
 
 
             
